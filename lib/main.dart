@@ -44,7 +44,7 @@ class _AppState extends State<App> {
   }
 
   Future<void> _logout() async {
-    await widget.settings.clear();
+    await widget.settings.deleteAll(['url', 'user', 'pass']);
     await widget.catalog.clear();
     setState(() => _service = null);
   }
@@ -59,6 +59,8 @@ class _AppState extends State<App> {
             : HomeScreen(
                 api: _service!,
                 repo: CatalogRepository(_service!, widget.catalog),
+                settings: widget.settings,
+                catalog: widget.catalog,
                 onLogout: _logout,
               ),
       );
