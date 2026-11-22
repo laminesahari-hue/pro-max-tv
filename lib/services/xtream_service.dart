@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+dynamic _parse(Uint8List b) => json.decode(utf8.decode(b));
 
 class XtreamService {
   final String serverUrl, username, password;
@@ -18,20 +22,21 @@ class XtreamService {
       });
 
   Future<dynamic> _get(Uri uri) async {
-    final res = await http.get(uri).timeout(const Duration(seconds: 20));
+    final res = await http.get(uri).timeout(const Duration(seconds: 25));
     if (res.statusCode != 200) {
       throw Exception('Erreur serveur (${res.statusCode})');
     }
-    return json.decode(utf8.decode(res.bodyBytes));
+    return compute(_parse, res.bodyBytes);
   }
 
   List<dynamic> _list(dynamic d) => d is List ? d : [];
+  Map<String, dynamic> _map(dynamic d) =>
+      d is Map ? Map<String, dynamic>.from(d) : <String, dynamic>{};
 
   Future<Map<String, dynamic>> login() async {
-    final data = await _get(_api());
-    if (data is Map<String, dynamic> &&
-        data['user_info']?['auth']?.toString() == '1') {
-      return data;
+    final d = await _get(_api());
+    if (d is Map && d['user_info'] is Map && '${d['user_info']['auth']}' == '1') {
+      return Map<String, dynamic>.from(d);
     }
     throw Exception('Identifiants invalides');
   }
@@ -50,12 +55,12 @@ class XtreamService {
   Future<List<dynamic>> getSeries() async =>
       _list(await _get(_api({'action': 'get_series'})));
 
-  Future<Map<String, dynamic>> getSeriesInfo(int id) async {
-    final d = await _get(_api({'action': 'get_series_info', 'series_id': '$id'}));
-    return d is Map<String, dynamic> ? d : {};
-  }
+  Future<Map<String, dynamic>> getSeriesInfo(int id) async =>
+      _map(await _get(_api({'action': 'get_series_info', 'series_id': '$id'})));
+  Future<Map<String, dynamic>> getVodInfo(int id) async =>
+      _map(await _get(_api({'action': 'get_vod_info', 'vod_id': '$id'})));
 
-  Future<List<dynamic>> getShortEpg(int streamId, {int limit = 4}) async {
+  Future<List<dynamic>> getShortEpg(int streamId, {int limit = 2}) async {
     final d = await _get(_api({
       'action': 'get_short_epg',
       'stream_id': '$streamId',
