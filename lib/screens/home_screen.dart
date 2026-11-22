@@ -1,40 +1,80 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../data/catalog_repository.dart';
 import '../services/xtream_service.dart';
 import '../widgets/carousel.dart';
 import 'player_screen.dart';
 import 'series_screen.dart';
+import 'settings_screen.dart';
+
+const _labels = {Kind.live: 'Live', Kind.vod: 'Films', Kind.series: 'Séries'};
 
 class HomeScreen extends StatelessWidget {
   final XtreamService api;
   final CatalogRepository repo;
+  final Box settings, catalog;
   final VoidCallback onLogout;
-  const HomeScreen(
-      {super.key, required this.api, required this.repo, required this.onLogout});
+  const HomeScreen({
+    super.key,
+    required this.api,
+    required this.repo,
+    required this.settings,
+    required this.catalog,
+    required this.onLogout,
+  });
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-        length: 3,
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('PRO MAX TV',
-                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-            actions: [
-              IconButton(
-                  icon: const Icon(Icons.logout),
-                  tooltip: 'Déconnexion',
-                  onPressed: onLogout),
-            ],
-            bottom: const TabBar(tabs: [
-              Tab(text: 'Live'),
-              Tab(text: 'Films'),
-              Tab(text: 'Séries'),
-            ]),
-          ),
-          body: TabBarView(children: [
-            for (final k in Kind.values) CatalogTab(kind: k, api: api, repo: repo),
-          ]),
-        ),
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable:
+            settings.listenable(keys: ['show_vod', 'show_series', 'refresh']),
+        builder: (_, __, ___) {
+          final kinds = [
+            Kind.live,
+            if (settings.get('show_vod', defaultValue: true) as bool) Kind.vod,
+            if (settings.get('show_series', defaultValue: true) as bool)
+              Kind.series,
+          ];
+          final tick = settings.get('refresh', defaultValue: 0);
+          return DefaultTabController(
+            key: ValueKey('${kinds.map((k) => k.name).join()}$tick'),
+            length: kinds.length,
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text('PRO MAX TV',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.settings),
+                    tooltip: 'Paramètres',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(
+                          settings: settings,
+                          catalog: catalog,
+                          api: api,
+                          onLogout: onLogout,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                bottom: TabBar(tabs: [
+                  for (final k in kinds) Tab(text: _labels[k]),
+                ]),
+              ),
+              body: TabBarView(children: [
+                for (final k in kinds)
+                  CatalogTab(
+                      key: ValueKey('${k.name}$tick'),
+                      kind: k,
+                      api: api,
+                      repo: repo),
+              ]),
+            ),
+          );
+        },
       );
 }
 
