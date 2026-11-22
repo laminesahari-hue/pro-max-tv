@@ -26,8 +26,9 @@ jobs:
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>\n    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <application android:usesCleartextTraffic="true"|' $M
           sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|&\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' $M
       - run: flutter pub get
-      - run: flutter build apk --release
+      - name: Build APK léger (un fichier par architecture)
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/symbols
       - uses: actions/upload-artifact@v4
         with:
           name: promax-tv-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-*-release.apk
