@@ -1,4 +1,4 @@
-import 'dart:async';
+  import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +6,9 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../core/models.dart';
 import '../core/scope.dart';
+import '../data/catalog_repository.dart';
+
+const _kNeon = Color(0xFF69F028);
 
 String _fmt(Duration d) {
   String t(int n) => n.toString().padLeft(2, '0');
@@ -20,7 +23,10 @@ String _hm(DateTime d) =>
 String _trackName(String id, String? title, String? lang) {
   if (id == 'auto') return 'Auto';
   if (id == 'no') return 'Désactivés';
-  final n = [title, lang].where((e) => e != null && e.isNotEmpty).join(' · ');
+  final n = <String>[
+    if (title != null && title.isNotEmpty) title,
+    if (lang != null && lang.isNotEmpty) lang,
+  ].join(' · ');
   return n.isEmpty ? 'Piste $id' : n;
 }
 
@@ -55,7 +61,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  static const _fits = [BoxFit.contain, BoxFit.cover, BoxFit.fill];
+  static final _fits = List<BoxFit>.of(<BoxFit>[BoxFit.contain, BoxFit.cover, BoxFit.fill]);
   static const _panelW = 290.0;
 
   late final AppScope app;
@@ -67,6 +73,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final _panelFocus = FocusNode();
   Timer? _hide, _save, _info, _abr, _digitTimer;
 
+  late List<Item> _allChannels;
+  List<Cat> _cats = <Cat>[];
+  String _selectedCat = 'all';
+
   late int _idx;
   late int _fit;
   int? _prevIdx;
@@ -74,19 +84,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _show = false, _showInfo = false, _buffering = true;
   bool _panel = false, _chanList = false, _started = false;
   String? _error;
-  List<Programme> _progs = [];
+  List<Programme> _progs = <Programme>[];
   int _retries = 0;
   String _digits = '';
   double _rate = 1.0;
 
-  // qualité adaptative
   String _q = 'auto';
   int? _vIdx;
   final _stalls = <DateTime>[];
   DateTime _lastChange = DateTime.now();
 
   bool get _live => widget.channels != null;
-  Item get _item => _live ? widget.channels![_idx] : widget.item!;
+  Item get _item => _live ? _allChannels.elementAt(_idx) : widget.item!;
   String get _title => _live ? _item.name : widget.title;
   int get _step => app.store.get<int>('seek_step', 10);
 
@@ -103,37 +112,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     app = AppScope.of(context);
     final st = app.store;
+    _allChannels = _live ? List<Item>.of(widget.channels!) : <Item>[];
     _idx = widget.index;
     _fit = st.get<int>('fit', 0);
 
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    const sizes = [8, 32, 64];
+        final sizes = List<int>.generate(3, (i) => (i + 1) * 16);
+
+    final bufIdx = st.get<int>('buffer', 1).clamp(0, 2);
     player = Player(
         configuration:
-            PlayerConfiguration(bufferSize: sizes[st.get<int>('buffer', 1)] * 1024 * 1024));
+            PlayerConfiguration(bufferSize: sizes.elementAt(bufIdx) * 1024 * 1024));
     controller = VideoController(
       player,
       configuration: VideoControllerConfiguration(
           enableHardwareAcceleration: st.get<bool>('hwdec', true)),
     );
 
-    if (!kIsWeb && _live && st.get<bool>('fast_zap', true)) {
+    if (!kIsWeb) {
       try {
-        final p = player.platform;
-          final dynamic dyn = p;
+        final dynamic dyn = player.platform;
         dyn.setProperty('reconnect', '1');
         dyn.setProperty('reconnect-streamed', '1');
         dyn.setProperty('reconnect-delay-max', '5');
         dyn.setProperty('network-timeout', '15');
         dyn.setProperty('demuxer-readahead-secs', '4');
-
       } catch (_) {}
     }
 
-    _subs.addAll([
+    _subs.addAll(<StreamSubscription>[
       player.stream.error.listen(_onError),
       player.stream.buffering.listen((b) {
         if (b && _started) _stalls.add(DateTime.now());
@@ -151,10 +163,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ]);
     _save = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
     _abr = Timer.periodic(const Duration(seconds: 15), (_) => _abrTick());
+    if (_live) _loadFolders();
     _openCurrent();
   }
 
-  // ---------- lecture ----------
+  Future<void> _loadFolders() async {
+    try {
+      final c = await app.repo.categories(Kind.live);
+      final all = await app.repo.items(Kind.live);
+      if (!mounted) return;
+      final cur = _item;
+      setState(() {
+        _cats = <Cat>[const Cat('all', 'Toutes les chaînes'), ...c];
+        if (all.isNotEmpty) {
+          _allChannels = all;
+          final found = all.indexWhere((x) => x.id == cur.id);
+          if (found >= 0) _idx = found;
+        }
+        if (_item.cat.isNotEmpty) _selectedCat = _item.cat;
+      });
+    } catch (_) {}
+  }
   Future<void> _openCurrent() async {
     final st = app.store;
     final gen = ++_gen;
@@ -191,8 +220,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _buffering = true;
       });
     }
-        await player.open(Media(url, start: start, httpHeaders: const {'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18'}));
-
+    await player.open(
+      Media(
+        url,
+        start: start,
+        httpHeaders: const <String, String>{
+          'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
+        },
+      ),
+    );
   }
 
   void _onError(String e) {
@@ -222,7 +258,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // ---------- qualité adaptative ----------
   void _abrTick() {
     if (!mounted || _q != 'auto' || !app.store.get<bool>('abr', true)) return;
     final v = _variants;
@@ -232,7 +267,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final cur = _vIdx ?? v.length - 1;
     if (_stalls.length >= 2 && cur > 0) {
       _vIdx = cur - 1;
-      player.setVideoTrack(v[_vIdx!]);
+      player.setVideoTrack(v.elementAt(_vIdx!));
       _stalls.clear();
       _lastChange = now;
       if (mounted) setState(() {});
@@ -244,7 +279,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         player.setVideoTrack(VideoTrack.auto());
       } else {
         _vIdx = _vIdx! + 1;
-        player.setVideoTrack(v[_vIdx!]);
+        player.setVideoTrack(v.elementAt(_vIdx!));
       }
       _lastChange = now;
       if (mounted) setState(() {});
@@ -263,7 +298,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final i = v.indexWhere((x) => x.id == id);
       if (i >= 0) {
         _vIdx = i;
-        player.setVideoTrack(v[i]);
+        player.setVideoTrack(v.elementAt(i));
       }
     }
     setState(() {});
@@ -289,7 +324,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  // ---------- overlay ----------
   void _restartHide() {
     _hide?.cancel();
     if (_panel || _chanList) return;
@@ -347,14 +381,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // ---------- zapping ----------
   void _jump(int i) {
-    final n = widget.channels!.length;
+    final n = _allChannels.length;
     if (n == 0 || i == _idx) return;
     _prevIdx = _idx;
     _idx = (i % n + n) % n;
     _retries = 0;
-    _progs = [];
+    _progs = <Programme>[];
     _flashInfo();
     _openCurrent();
   }
@@ -371,12 +404,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _digitTimer = Timer(const Duration(milliseconds: 1800), () {
       final n = int.tryParse(_digits) ?? 0;
       _digits = '';
-      final ch = widget.channels!;
-      var i = ch.indexWhere((c) => c.number == n && n > 0);
+      var i = _allChannels.indexWhere((c) => c.number == n && n > 0);
       if (i < 0) i = n - 1;
       if (mounted) {
         setState(() {});
-        if (i >= 0 && i < ch.length) _jump(i);
+        if (i >= 0 && i < _allChannels.length) _jump(i);
       }
     });
     setState(() {});
@@ -388,7 +420,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     player.seek(t);
     _flashInfo();
   }
-
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     if (_show || _panel || _chanList) {
@@ -430,11 +461,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return KeyEventResult.ignored;
   }
 
-  // ---------- UI ----------
   Widget _quick(IconData icon, String label, VoidCallback onTap) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          IconButton.filledTonal(icon: Icon(icon), onPressed: onTap),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white12,
+              foregroundColor: Colors.white,
+              focusColor: _kNeon,
+              hoverColor: _kNeon,
+            ),
+            icon: Icon(icon),
+            onPressed: onTap,
+          ),
           const SizedBox(height: 2),
           Text(label,
               textAlign: TextAlign.center,
@@ -447,60 +486,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
         left: 0,
         right: _panel ? _panelW : 0,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 12, 16, 36),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 36),
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.black87, Colors.transparent],
+              colors: <Color>[Colors.black87, Colors.transparent],
             ),
           ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Row(children: <Widget>[
             if (_show)
               IconButton(
-                icon: const Icon(Icons.arrow_back_ios),
+                icon: const Icon(Icons.arrow_back_ios, color: _kNeon),
                 onPressed: () => Navigator.of(context).pop(),
-              )
-            else
-              const SizedBox(width: 12),
-            const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('PRO',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1)),
-              Text('MAX TV',
-                  style: TextStyle(fontSize: 11, letterSpacing: 1, color: Colors.white70)),
-            ]),
-            const SizedBox(width: 14),
-            if (_live)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFE50914),
-                    borderRadius: BorderRadius.circular(6)),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.circle, size: 8),
-                  SizedBox(width: 6),
-                  Text('En Direct',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                ]),
               ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                    _live && _item.number > 0 ? '${_item.number}  $_title' : _title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                if (_live && _progs.isNotEmpty)
-                  Text('Maintenant : ${_progs.first.title}',
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (_live && _progs.length > 1)
-                  Text('Ensuite : ${_progs[1].title}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white70)),
-              ]),
-            ),
+            const Icon(Icons.all_inclusive, color: _kNeon, size: 22),
+            const SizedBox(width: 8),
+            const Text('TV ',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+            const Text('MAX ',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _kNeon)),
+            const Text('PRO',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
           ]),
         ),
       );
@@ -512,15 +519,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
           final pos = (s.data ?? Duration.zero).inMilliseconds.toDouble();
           final dur = player.state.duration;
           final max = dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
-          return Row(children: [
+          return Row(children: <Widget>[
             Text(_fmt(s.data ?? Duration.zero),
                 style: const TextStyle(color: Colors.white70, fontSize: 13)),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: Colors.white,
+                  activeTrackColor: _kNeon,
                   inactiveTrackColor: Colors.white24,
-                  thumbColor: Colors.white,
+                  thumbColor: _kNeon,
                   trackHeight: 3,
                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                 ),
@@ -536,110 +543,68 @@ class _PlayerScreenState extends State<PlayerScreen> {
         },
       );
 
-  Widget _epgBar() {
-    if (_progs.isEmpty) return const SizedBox(height: 8);
-    final p = _progs.first;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(children: [
-        Text(_hm(p.start), style: const TextStyle(color: Colors.white70, fontSize: 13)),
-        const SizedBox(width: 8),
-        Expanded(child: LinearProgressIndicator(value: p.progress, minHeight: 3)),
-        const SizedBox(width: 8),
-        Text(_hm(p.end), style: const TextStyle(color: Colors.white70, fontSize: 13)),
-      ]),
-    );
-  }
-
   Widget _bottomBar() => Positioned(
         bottom: 0,
         left: 0,
         right: _panel ? _panelW : 0,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 36, 24, 10),
+          padding: const EdgeInsets.fromLTRB(24, 40, 24, 18),
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [Colors.black87, Colors.transparent],
+              colors: <Color>[Colors.black87, Colors.transparent],
             ),
           ),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              _quick(Icons.subtitles_outlined, 'Langues et\nSous-titres', _openPanel),
-              _quick(Icons.hd_outlined, 'Qualité\nVidéo', _openPanel),
-              _quick(Icons.settings_outlined, 'Paramètres\nAvancés', _togglePanel),
-              if (_live)
-                _quick(Icons.format_list_bulleted, 'Liste des\nchaînes', _openChanList),
-            ]),
-            const SizedBox(height: 8),
-            if (_live) _epgBar() else _seekBar(),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              if (_live)
-                IconButton(
-                  icon: const Icon(Icons.skip_previous),
-                  tooltip: 'Chaîne précédente',
-                  onPressed: () {
-                    _zap(-1);
-                    _restartHide();
-                  },
-                )
-              else
-                IconButton(
-                  icon: Icon(_step == 30 ? Icons.replay_30 : Icons.replay_10, size: 28),
-                  onPressed: () {
-                    _seek(-_step);
-                    _restartHide();
-                  },
-                ),
-              const SizedBox(width: 12),
-              StreamBuilder<bool>(
-                stream: player.stream.playing,
-                initialData: player.state.playing,
-                builder: (_, s) => IconButton(
-                  focusNode: _playFocus,
-                  iconSize: 44,
-                  icon: Icon(s.data == true
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded),
-                  onPressed: () => player.playOrPause(),
-                ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+            if (!_live) _seekBar(),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: <Widget>[
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                  Text(
+                    _live && _item.number > 0 ? '${_item.number} · $_title' : _title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  const SizedBox(height: 6),
+                  if (_live)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                        Icon(Icons.circle, size: 8, color: Color(0xFFE50914)),
+                        SizedBox(width: 6),
+                        Text('LIVE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                      ]),
+                    ),
+                  if (_live && _progs.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(_progs.first.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                  ],
+                ]),
               ),
-              const SizedBox(width: 12),
-              if (_live)
-                IconButton(
-                  icon: const Icon(Icons.skip_next),
-                  tooltip: 'Chaîne suivante',
-                  onPressed: () {
-                    _zap(1);
-                    _restartHide();
+              if (_show) ...<Widget>[
+                if (_live)
+                  _quick(Icons.folder_open, 'Dossiers &\nChaînes', _openChanList),
+                _quick(Icons.subtitles_outlined, 'Audio &\nSous-titres', _openPanel),
+                _quick(Icons.settings_outlined, 'Réglages', _togglePanel),
+                _quick(
+                  app.store.isFav(_item) ? Icons.favorite : Icons.favorite_border,
+                  'Favori',
+                  () async {
+                    await app.store.toggleFav(_item);
+                    if (mounted) setState(() {});
                   },
-                )
-              else
-                IconButton(
-                  icon: Icon(_step == 30 ? Icons.forward_30 : Icons.forward_10, size: 28),
-                  onPressed: () {
-                    _seek(_step);
-                    _restartHide();
-                  },
-                ),
-              if (_live) ...[
-                const SizedBox(width: 12),
-                IconButton(
-                  icon: const Icon(Icons.swap_horiz),
-                  tooltip: 'Dernière chaîne',
-                  onPressed: _lastChannel,
                 ),
               ],
-              const SizedBox(width: 12),
-              IconButton(
-                icon: Icon(app.store.isFav(_item) ? Icons.favorite : Icons.favorite_border),
-                tooltip: 'Favori',
-                onPressed: () async {
-                  await app.store.toggleFav(_item);
-                  if (mounted) setState(() {});
-                },
-              ),
             ]),
           ]),
         ),
@@ -652,16 +617,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     Widget head(String s) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
         child: Text(s.toUpperCase(),
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-                color: Theme.of(context).colorScheme.primary)));
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: _kNeon)));
     Widget opt(String label, bool sel, VoidCallback tap, {FocusNode? f}) => ListTile(
           dense: true,
           focusNode: f,
           title: Text(label),
-          trailing: sel ? const Icon(Icons.check, size: 18) : null,
+          trailing: sel ? const Icon(Icons.check, size: 18, color: _kNeon) : null,
           onTap: tap,
         );
     final abr = app.store.get<bool>('abr', true);
@@ -673,12 +635,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Material(
         color: const Color(0xF2121418),
         child: SafeArea(
-          child: ListView(children: [
+          child: ListView(children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
-              child: Row(children: [
-                const Text('Réglages',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              child: Row(children: <Widget>[
+                const Text('Réglages', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 IconButton(
                     icon: const Icon(Icons.close),
@@ -689,12 +650,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             opt(abr ? 'Auto (adaptatif)' : 'Auto', _q == 'auto', () => _setQuality('auto'),
                 f: _panelFocus),
             for (final x in v) opt(_vLabel(x), _q == x.id, () => _setQuality(x.id)),
-            if (v.isEmpty)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
-                child: Text('Une seule qualité disponible',
-                    style: TextStyle(color: Colors.white54, fontSize: 12)),
-              ),
             head('Audio'),
             for (final a in t.audio)
               opt(_trackName(a.id, a.title, a.language), cur.audio.id == a.id, () {
@@ -708,16 +663,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 setState(() {});
               }),
             head("Format de l'image"),
-            for (final e in const {0: 'Adapté', 1: 'Remplir', 2: 'Étirer'}.entries)
-              opt(e.value, _fit == e.key, () => setState(() => _fit = e.key)),
-            if (!_live) ...[
-              head('Vitesse'),
-              for (final r in const [0.75, 1.0, 1.25, 1.5, 2.0])
-                opt('${r}x', _rate == r, () {
-                  player.setRate(r);
-                  setState(() => _rate = r);
-                }),
-            ],
+                opt(e.value, _fit == e.key, () => setState(() => _fit = e.key)),
             const SizedBox(height: 16),
           ]),
         ),
@@ -726,48 +672,111 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _chanListView() {
-    final ch = widget.channels!;
-    final ctrl = ScrollController(
-        initialScrollOffset: ((_idx * 56.0) - 150).clamp(0.0, double.infinity).toDouble());
+    final filtered = _selectedCat == 'all'
+        ? _allChannels
+        : _allChannels.where((c) => c.cat == _selectedCat).toList();
     return Positioned(
       left: 0,
       top: 0,
       bottom: 0,
-      width: 300,
+      width: 520,
       child: Material(
-        color: const Color(0xF2121418),
+        color: const Color(0xEA0E1117),
         child: SafeArea(
-          child: Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
-              child: Row(children: [
-                const Text('Chaînes',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => setState(() => _chanList = false)),
+          child: Row(children: <Widget>[
+            SizedBox(
+              width: 210,
+              child: Column(children: <Widget>[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(14, 12, 8, 8),
+                  child: Row(children: <Widget>[
+                    Icon(Icons.folder, color: _kNeon, size: 18),
+                    SizedBox(width: 8),
+                    Text('Dossiers', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  ]),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _cats.length,
+                    itemBuilder: (_, i) {
+                      final cat = _cats.elementAt(i);
+                      final sel = cat.id == _selectedCat;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: sel ? _kNeon : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          title: Text(
+                            cat.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: sel ? Colors.black : Colors.white,
+                              fontWeight: sel ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          onTap: () => setState(() => _selectedCat = cat.id),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ]),
             ),
+            const VerticalDivider(width: 1, color: Colors.white12),
             Expanded(
-              child: ListView.builder(
-                controller: ctrl,
-                itemExtent: 56,
-                itemCount: ch.length,
-                itemBuilder: (_, i) => ListTile(
-                  autofocus: i == _idx,
-                  selected: i == _idx,
-                  dense: true,
-                  leading: Text('${ch[i].number > 0 ? ch[i].number : i + 1}',
-                      style: const TextStyle(color: Colors.white54)),
-                  title: Text(ch[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () {
-                    setState(() => _chanList = false);
-                    _jump(i);
-                    _focus.requestFocus();
-                  },
+              child: Column(children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+                  child: Row(children: <Widget>[
+                    Text('Chaînes (${filtered.length})',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _chanList = false)),
+                  ]),
                 ),
-              ),
+                Expanded(
+                  child: ListView.builder(
+                    itemExtent: 52,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final item = filtered.elementAt(i);
+                      final isCur = item.id == _item.id;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isCur ? _kNeon.withValues(alpha: 0.2) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: isCur ? Border.all(color: _kNeon) : null,
+                        ),
+                        child: ListTile(
+                          autofocus: isCur,
+                          dense: true,
+                          leading: Text('${item.number > 0 ? item.number : i + 1}',
+                              style: TextStyle(color: isCur ? _kNeon : Colors.white54)),
+                          title: Text(item.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: isCur ? _kNeon : Colors.white,
+                                  fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
+                          onTap: () {
+                            final realIdx = _allChannels.indexWhere((x) => x.id == item.id);
+                            setState(() => _chanList = false);
+                            if (realIdx >= 0) _jump(realIdx);
+                            _focus.requestFocus();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ]),
             ),
           ]),
         ),
@@ -790,18 +799,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => (_show || _panel || _chanList) ? _hideOverlay() : _showOverlay(),
-              child: Stack(fit: StackFit.expand, children: [
+              child: Stack(fit: StackFit.expand, children: <Widget>[
                 Video(
                   controller: controller,
                   controls: NoVideoControls,
-                  fit: _fits[_fit],
+                  fit: _fits.elementAt(_fit.clamp(0, 2)),
                 ),
                 if (_buffering && _error == null)
-                  const Center(child: CircularProgressIndicator()),
+                  const Center(child: CircularProgressIndicator(color: _kNeon)),
                 if (_error != null)
                   Center(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.error_outline, size: 40),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                      const Icon(Icons.error_outline, size: 40, color: _kNeon),
                       const SizedBox(height: 8),
                       const Text('Lecture impossible'),
                       Text(_error!,
@@ -810,6 +819,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           style: const TextStyle(color: Colors.white54, fontSize: 12)),
                       const SizedBox(height: 12),
                       FilledButton(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: _kNeon, foregroundColor: Colors.black),
                         onPressed: () {
                           _retries = 0;
                           _openCurrent();
@@ -826,10 +837,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         style: const TextStyle(
                             fontSize: 44,
                             fontWeight: FontWeight.bold,
-                            shadows: [Shadow(blurRadius: 8)])),
+                            color: _kNeon,
+                            shadows: <Shadow>[Shadow(blurRadius: 8)])),
                   ),
                 if (_show || _showInfo) _topBar(),
-                if (_show) _bottomBar(),
+                if (_show || _showInfo) _bottomBar(),
                 if (_panel) _panelView(),
                 if (_chanList && _live) _chanListView(),
               ]),
@@ -838,3 +850,4 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       );
 }
+          
