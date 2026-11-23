@@ -24,11 +24,31 @@ class Item {
       _s(raw['container_extension']).isEmpty ? 'mp4' : _s(raw['container_extension']);
   int get added =>
       int.tryParse(_s(raw['added'])) ?? int.tryParse(_s(raw['last_modified'])) ?? 0;
+  String get epgId => _s(raw['epg_channel_id']);
+  String get directUrl => _s(raw['direct_url']);
+  int get number => int.tryParse(_s(raw['num'])) ?? 0;
   String get key => '${kind.name}:$id';
 
   String encode() => json.encode({'k': kind.name, 'r': raw});
   static Item decode(String s) {
     final m = json.decode(s);
     return Item(Kind.values.byName(m['k']), Map<String, dynamic>.from(m['r']));
+  }
+}
+
+class Programme {
+  final String title;
+  final DateTime start, end;
+  const Programme(this.title, this.start, this.end);
+
+  bool get isNow {
+    final n = DateTime.now();
+    return !n.isBefore(start) && n.isBefore(end);
+  }
+
+  double get progress {
+    final total = end.difference(start).inSeconds;
+    if (total <= 0) return 0;
+    return (DateTime.now().difference(start).inSeconds / total).clamp(0.0, 1.0).toDouble();
   }
 }
