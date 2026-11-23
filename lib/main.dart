@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:media_kit/media_kit.dart';
+import 'core/profile.dart';
 import 'core/scope.dart';
 import 'core/store.dart';
 import 'data/catalog_repository.dart';
+import 'data/epg_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
-import 'services/xtream_service.dart';
+import 'services/source.dart';
 
 const accents = [
   Color(0xFFE50914),
@@ -32,41 +34,62 @@ class App extends StatefulWidget {
 }
 
 class _AppState extends State<App> {
-  XtreamService? _api;
+  Source? _api;
   CatalogRepository? _repo;
+  EpgService? _epg;
+  Profile? _profile;
 
   @override
   void initState() {
     super.initState();
-    final s = widget.store.settings;
-    if (s.get('url') != null) {
-      _connect(XtreamService(
-          serverUrl: s.get('url'), username: s.get('user'), password: s.get('pass')));
-    }
+    final p = widget.store.active;
+    if (p != null) _activate(p, notify: false);
   }
 
-  void _connect(XtreamService a) {
-    _api = a;
-    _repo = CatalogRepository(a, widget.store);
-  }
-
-  Future<void> _onLogin(XtreamService s) async {
+  void _activate(Profile p, {bool notify = true}) {
     final st = widget.store;
-    if (st.settings.get('url') != s.serverUrl || st.settings.get('user') != s.username) {
-      await st.user.clear(); // autre compte : on repart de zéro
+    st.setActive(p.id);
+    final a = buildSource(p);
+    final repo = CatalogRepository(a, st, p.id);
+    final epg = EpgService(st, a);
+    epg.init();
+    void apply() {
+      _profile = p;
+      _api = a;
+      _repo = repo;
+      _epg = epg;
     }
-    await st.catalog.clear();
-    await st.settings.putAll({'url': s.serverUrl, 'user': s.username, 'pass': s.password});
-    setState(() => _connect(s));
+
+    if (notify) {
+      setState(apply);
+    } else {
+      apply();
+    }
   }
 
-  Future<void> _logout() async {
-    await widget.store.settings.deleteAll(['url', 'user', 'pass']);
-    await widget.store.catalog.clear();
-    setState(() {
-      _api = null;
-      _repo = null;
-    });
+  Future<void> _add(Profile p) async {
+    final l = widget.store.profiles.where((x) => x.id != p.id).toList()..add(p);
+    await widget.store.saveProfiles(l);
+    _activate(p);
+  }
+
+  Future<void> _remove(Profile p) async {
+    final st = widget.store;
+    final l = st.profiles.where((x) => x.id != p.id).toList();
+    await st.saveProfiles(l);
+    await st.removeProfileData(p.id);
+    if (_profile?.id != p.id) return;
+    if (l.isEmpty) {
+      await st.settings.delete('active');
+      setState(() {
+        _profile = null;
+        _api = null;
+        _repo = null;
+        _epg = null;
+      });
+    } else {
+      _activate(l.first);
+    }
   }
 
   @override
@@ -88,11 +111,17 @@ class _AppState extends State<App> {
                 : AppScope(
                     api: _api!,
                     repo: _repo!,
+                    epg: _epg!,
                     store: widget.store,
-                    onLogout: _logout,
+                    profile: _profile!,
+                    onActivate: _activate,
+                    onAdd: _add,
+                    onRemove: _remove,
                     child: child!,
                   ),
-            home: _api == null ? LoginScreen(onLoggedIn: _onLogin) : const Shell(),
+            home: _api == null
+                ? ProfileFormScreen(first: true, onSave: _add)
+                : Shell(key: ValueKey(_profile!.id)),
           );
         },
       );
