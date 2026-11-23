@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../core/models.dart';
 import '../core/store.dart';
-import '../services/xtream_service.dart';
+import '../services/source.dart';
 
 dynamic _decode(String s) => json.decode(s);
 String _encode(dynamic d) => json.encode(d);
@@ -13,12 +13,14 @@ class Cat {
 }
 
 class CatalogRepository {
-  final XtreamService api;
+  final Source api;
   final Store store;
-  CatalogRepository(this.api, this.store);
+  final String pid;
+  CatalogRepository(this.api, this.store, this.pid);
 
   final _mem = <String, List<dynamic>>{};
   final _itemMem = <String, List<Item>>{};
+  final _session = <String>{};
 
   static final _adult =
       RegExp(r'adult|xxx|porn|18\+|\+18|erotic|for adults', caseSensitive: false);
@@ -26,9 +28,12 @@ class CatalogRepository {
   void clearMemory() {
     _mem.clear();
     _itemMem.clear();
+    _session.clear();
   }
 
   Future<List<Cat>> categories(Kind k, {bool refresh = false}) async {
+    if (k == Kind.vod && !api.hasVod) return [];
+    if (k == Kind.series && !api.hasSeries) return [];
     final raw = await _cached('${k.name}_cat', refresh, () {
       switch (k) {
         case Kind.live:
@@ -47,6 +52,8 @@ class CatalogRepository {
   }
 
   Future<List<Item>> items(Kind k, {bool refresh = false}) async {
+    if (k == Kind.vod && !api.hasVod) return [];
+    if (k == Kind.series && !api.hasSeries) return [];
     final hide = store.get('hide_adult', true);
     final mk = '${k.name}$hide';
     if (!refresh && _itemMem.containsKey(mk)) return _itemMem[mk]!;
@@ -73,27 +80,32 @@ class CatalogRepository {
 
   Future<List<dynamic>> _cached(String key, bool refresh,
       Future<List<dynamic>> Function() fetch) async {
-    if (!refresh && _mem.containsKey(key)) return _mem[key]!;
-    final raw = store.catalog.get(key) as String?;
-    final ts = store.catalog.get('${key}_ts') as int?;
+    final ck = '${pid}_$key';
+    if (!refresh && _mem.containsKey(ck)) return _mem[ck]!;
+    final raw = store.catalog.get(ck) as String?;
+    final ts = store.catalog.get('${ck}_ts') as int?;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final ttl = store.get<int>('ttl_h', 6) * 3600 * 1000;
-    final fresh = ts != null && now - ts < ttl;
+    final mode = store.get<String>('update_mode', 'daily');
+    final stale = ts == null ||
+        (mode == 'start' && !_session.contains(ck)) ||
+        (mode == 'daily' && now - ts > 24 * 3600 * 1000);
 
-    if (raw != null && fresh && !refresh) {
+    if (raw != null && !stale && !refresh) {
       final d = await compute(_decode, raw) as List<dynamic>;
-      return _mem[key] = d;
+      _session.add(ck);
+      return _mem[ck] = d;
     }
     try {
       final data = await fetch();
-      _mem[key] = data;
-      await store.catalog.put(key, await compute(_encode, data));
-      await store.catalog.put('${key}_ts', now);
+      _mem[ck] = data;
+      _session.add(ck);
+      await store.catalog.put(ck, await compute(_encode, data));
+      await store.catalog.put('${ck}_ts', now);
       return data;
     } catch (_) {
       if (raw != null) {
         final d = await compute(_decode, raw) as List<dynamic>;
-        return _mem[key] = d; // repli hors-ligne
+        return _mem[ck] = d; // repli hors-ligne
       }
       rethrow;
     }
