@@ -6,6 +6,7 @@ import '../widgets/banner.dart';
 import '../widgets/carousel.dart';
 import 'detail_screen.dart';
 import 'player_screen.dart';
+import 'search_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,7 +34,10 @@ class _HomePageState extends State<HomePage> {
     final ser = st.get('show_series', true)
         ? await app.repo.items(Kind.series, refresh: refresh)
         : <Item>[];
-    return [vod, ser];
+    final live = st.get('show_live', true)
+        ? await app.repo.items(Kind.live, refresh: refresh)
+        : <Item>[];
+    return [vod, ser, live];
   }
 
   List<Item> _recent(List<Item> l) =>
@@ -63,7 +67,7 @@ class _HomePageState extends State<HomePage> {
                 message: '${snap.error}',
                 onRetry: () => setState(() => _f = _load(refresh: true)));
           }
-          final vod = snap.data![0], ser = snap.data![1];
+          final vod = snap.data![0], ser = snap.data![1], live = snap.data![2];
           return RefreshIndicator(
             onRefresh: () async {
               setState(() => _f = _load(refresh: true));
@@ -83,17 +87,37 @@ class _HomePageState extends State<HomePage> {
                     : <Item>[];
                 return ListView(children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Text('PRO MAX TV',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                            color: Theme.of(context).colorScheme.primary)),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 4, 4),
+                    child: Row(children: [
+                      Text('PRO MAX TV',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2,
+                              color: Theme.of(context).colorScheme.primary)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.search),
+                        tooltip: 'Rechercher',
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => Scaffold(
+                              appBar: AppBar(title: const Text('Recherche')),
+                              body: const SearchPage(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
                   ),
                   if (hero.isNotEmpty)
-                    FeaturedBanner(
-                        items: hero, onTap: (i) => openItem(context, i)),
+                    FeaturedBanner(items: hero, onTap: (i) => openItem(context, i)),
+                  Rail(
+                    title: 'Chaînes récentes',
+                    items: recentLive,
+                    onTap: (i) => openItem(context, i, channels: recentLive),
+                  ),
                   Rail(
                     title: 'Reprendre la lecture',
                     items: [for (final e in cont) e.item],
@@ -108,15 +132,16 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                   Rail(
-                    title: 'Chaînes récentes',
-                    items: recentLive,
-                    onTap: (i) => openItem(context, i, channels: recentLive),
-                  ),
-                  Rail(
                     title: 'Mes favoris',
                     items: favs,
                     onTap: (i) => openItem(context, i, channels: favLive),
                   ),
+                  if (!app.api.hasVod)
+                    Rail(
+                      title: 'Toutes les chaînes',
+                      items: live.take(40).toList(),
+                      onTap: (i) => openItem(context, i, channels: live),
+                    ),
                   Rail(
                       title: 'Films récents',
                       items: _recent(vod),
