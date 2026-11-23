@@ -2,10 +2,21 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../core/models.dart';
+import 'source.dart';
 
 dynamic _parse(Uint8List b) => json.decode(utf8.decode(b));
 
-class XtreamService {
+String _b64(dynamic v) {
+  final s = v == null ? '' : '$v';
+  try {
+    return utf8.decode(base64.decode(s));
+  } catch (_) {
+    return s;
+  }
+}
+
+class XtreamService extends Source {
   final String serverUrl, username, password;
 
   XtreamService({
@@ -13,6 +24,9 @@ class XtreamService {
     required this.username,
     required this.password,
   }) : serverUrl = serverUrl.trim().replaceAll(RegExp(r'/+$'), '');
+
+  @override
+  String get subtitle => serverUrl;
 
   Uri _api([Map<String, String> extra = const {}]) =>
       Uri.parse('$serverUrl/player_api.php').replace(queryParameters: {
@@ -41,38 +55,86 @@ class XtreamService {
     throw Exception('Identifiants invalides');
   }
 
+  @override
+  Future<void> validate() async {
+    await login();
+  }
+
+  String _exp(dynamic v) {
+    final n = int.tryParse('${v ?? ''}');
+    if (n == null) return 'Illimité';
+    final d = DateTime.fromMillisecondsSinceEpoch(n * 1000);
+    String t(int x) => x.toString().padLeft(2, '0');
+    return '${t(d.day)}/${t(d.month)}/${d.year}';
+  }
+
+  @override
+  Future<Map<String, String>> account() async {
+    final d = await login();
+    final u = Map<String, dynamic>.from(d['user_info'] as Map);
+    return {
+      'Serveur': serverUrl,
+      'Utilisateur': username,
+      'Statut': '${u['status'] ?? '-'}',
+      'Expiration': _exp(u['exp_date']),
+      'Connexions': '${u['active_cons'] ?? 0} / ${u['max_connections'] ?? '-'}',
+    };
+  }
+
+  @override
   Future<List<dynamic>> getLiveCategories() async =>
       _list(await _get(_api({'action': 'get_live_categories'})));
+  @override
   Future<List<dynamic>> getVodCategories() async =>
       _list(await _get(_api({'action': 'get_vod_categories'})));
+  @override
   Future<List<dynamic>> getSeriesCategories() async =>
       _list(await _get(_api({'action': 'get_series_categories'})));
 
+  @override
   Future<List<dynamic>> getLiveStreams() async =>
       _list(await _get(_api({'action': 'get_live_streams'})));
+  @override
   Future<List<dynamic>> getVodStreams() async =>
       _list(await _get(_api({'action': 'get_vod_streams'})));
+  @override
   Future<List<dynamic>> getSeries() async =>
       _list(await _get(_api({'action': 'get_series'})));
 
+  @override
   Future<Map<String, dynamic>> getSeriesInfo(int id) async =>
       _map(await _get(_api({'action': 'get_series_info', 'series_id': '$id'})));
+  @override
   Future<Map<String, dynamic>> getVodInfo(int id) async =>
       _map(await _get(_api({'action': 'get_vod_info', 'vod_id': '$id'})));
 
-  Future<List<dynamic>> getShortEpg(int streamId, {int limit = 2}) async {
+  @override
+  Future<List<Programme>> serverEpg(Item ch, {int limit = 8}) async {
     final d = await _get(_api({
       'action': 'get_short_epg',
-      'stream_id': '$streamId',
+      'stream_id': '${ch.id}',
       'limit': '$limit',
     }));
-    return d is Map ? _list(d['epg_listings']) : [];
+    final out = <Programme>[];
+    if (d is Map && d['epg_listings'] is List) {
+      for (final e in d['epg_listings'] as List) {
+        final s = int.tryParse('${e['start_timestamp']}');
+        final t = int.tryParse('${e['stop_timestamp']}');
+        if (s == null || t == null) continue;
+        out.add(Programme(_b64(e['title']),
+            DateTime.fromMillisecondsSinceEpoch(s * 1000),
+            DateTime.fromMillisecondsSinceEpoch(t * 1000)));
+      }
+    }
+    return out;
   }
 
-  String liveUrl(int id, {String ext = 'm3u8'}) =>
-      '$serverUrl/live/$username/$password/$id.$ext';
-  String vodUrl(int id, String ext) =>
-      '$serverUrl/movie/$username/$password/$id.$ext';
+  @override
+  Future<String> liveStream(Item ch, {String ext = 'm3u8'}) async =>
+      '$serverUrl/live/$username/$password/${ch.id}.$ext';
+  @override
+  String vodUrl(int id, String ext) => '$serverUrl/movie/$username/$password/$id.$ext';
+  @override
   String episodeUrl(int id, String ext) =>
       '$serverUrl/series/$username/$password/$id.$ext';
 }
