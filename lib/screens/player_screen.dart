@@ -447,10 +447,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _live ? _showOverlay() : _seek(_step);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.select ||
+        if (k == LogicalKeyboardKey.select ||
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter ||
-        k == LogicalKeyboardKey.gameButtonA) {
+        k == LogicalKeyboardKey.gameButtonA ||
+        k == LogicalKeyboardKey.accept ||
+        k == LogicalKeyboardKey.open ||
+        k == LogicalKeyboardKey.info ||
+        k == LogicalKeyboardKey.guide) {
+
       _showOverlay();
       return KeyEventResult.handled;
     }
@@ -592,8 +597,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ]),
               ),
               if (_show) ...<Widget>[
-                if (_live)
-                  _quick(Icons.folder_open, 'Dossiers &\nChaînes', _openChanList),
+                                if (_live)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                      IconButton(
+                        focusNode: _playFocus,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white12,
+                          foregroundColor: Colors.white,
+                          focusColor: _kNeon,
+                          hoverColor: _kNeon,
+                        ),
+                        icon: const Icon(Icons.folder_open),
+                        onPressed: _openChanList,
+                      ),
+                      const SizedBox(height: 2),
+                      const Text('Dossiers &\nChaînes',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.1)),
+                    ]),
+                  ),
+
+              
                 _quick(Icons.subtitles_outlined, 'Audio &\nSous-titres', _openPanel),
                 _quick(Icons.settings_outlined, 'Réglages', _togglePanel),
                 _quick(
