@@ -123,7 +123,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!kIsWeb && _live && st.get<bool>('fast_zap', true)) {
       try {
         final p = player.platform;
-        if         final dynamic dyn = p;
+          final dynamic dyn = p;
         dyn.setProperty('reconnect', '1');
         dyn.setProperty('reconnect-streamed', '1');
         dyn.setProperty('reconnect-delay-max', '5');
