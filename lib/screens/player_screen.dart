@@ -123,10 +123,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!kIsWeb && _live && st.get<bool>('fast_zap', true)) {
       try {
         final p = player.platform;
-        if (p is NativePlayer) {
-          p.setProperty('cache-pause-initial', 'no');
-          p.setProperty('demuxer-readahead-secs', '3');
-        }
+        if         final dynamic dyn = p;
+        dyn.setProperty('reconnect', '1');
+        dyn.setProperty('reconnect-streamed', '1');
+        dyn.setProperty('reconnect-delay-max', '5');
+        dyn.setProperty('network-timeout', '15');
+        dyn.setProperty('demuxer-readahead-secs', '4');
+
       } catch (_) {}
     }
 
@@ -188,7 +191,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _buffering = true;
       });
     }
-    await player.open(Media(url, start: start));
+        await player.open(Media(url, start: start, httpHeaders: const {'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18'}));
+
   }
 
   void _onError(String e) {
