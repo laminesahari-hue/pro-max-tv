@@ -20,7 +20,10 @@ String _hm(DateTime d) =>
 String _trackName(String id, String? title, String? lang) {
   if (id == 'auto') return 'Auto';
   if (id == 'no') return 'Désactivés';
-  final n = [title, lang].where((e) => e != null && e.isNotEmpty).join(' · ');
+  final n = <String>[
+    if (title != null && title.isNotEmpty) title,
+    if (lang != null && lang.isNotEmpty) lang,
+  ].join(' · ');
   return n.isEmpty ? 'Piste $id' : n;
 }
 
@@ -55,7 +58,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  static const _fits = [BoxFit.contain, BoxFit.cover, BoxFit.fill];
+  static final _fits = List<BoxFit>.of(<BoxFit>[BoxFit.contain, BoxFit.cover, BoxFit.fill]);
   static const _panelW = 290.0;
 
   late final AppScope app;
@@ -74,19 +77,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _show = false, _showInfo = false, _buffering = true;
   bool _panel = false, _chanList = false, _started = false;
   String? _error;
-  List<Programme> _progs = [];
+  List<Programme> _progs = <Programme>[];
   int _retries = 0;
   String _digits = '';
   double _rate = 1.0;
 
-  // qualité adaptative
   String _q = 'auto';
   int? _vIdx;
   final _stalls = <DateTime>[];
   DateTime _lastChange = DateTime.now();
 
   bool get _live => widget.channels != null;
-  Item get _item => _live ? widget.channels![_idx] : widget.item!;
+  Item get _item => _live ? widget.channels!.elementAt(_idx) : widget.item!;
   String get _title => _live ? _item.name : widget.title;
   int get _step => app.store.get<int>('seek_step', 10);
 
@@ -106,14 +108,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _idx = widget.index;
     _fit = st.get<int>('fit', 0);
 
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    const sizes =;
+    final sizes = List<int>.of(<int>[8, 32, 64]);
+    final bufIdx = st.get<int>('buffer', 1).clamp(0, 2);
     player = Player(
-        configuration: PlayerConfiguration(
-            bufferSize: sizes[st.get<int>('buffer', 1)] * 1024 * 1024));
+        configuration:
+            PlayerConfiguration(bufferSize: sizes.elementAt(bufIdx) * 1024 * 1024));
     controller = VideoController(
       player,
       configuration: VideoControllerConfiguration(
@@ -133,7 +138,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       } catch (_) {}
     }
 
-    _subs.addAll([
+    _subs.addAll(<StreamSubscription>[
       player.stream.error.listen(_onError),
       player.stream.buffering.listen((b) {
         if (b && _started) _stalls.add(DateTime.now());
@@ -154,7 +159,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _openCurrent();
   }
 
-  // ---------- lecture ----------
   Future<void> _openCurrent() async {
     final st = app.store;
     final gen = ++_gen;
@@ -195,7 +199,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Media(
         url,
         start: start,
-        httpHeaders: const {
+        httpHeaders: const <String, String>{
           'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
         },
       ),
@@ -229,7 +233,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // ---------- qualité adaptative ----------
   void _abrTick() {
     if (!mounted || _q != 'auto' || !app.store.get<bool>('abr', true)) return;
     final v = _variants;
@@ -239,7 +242,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final cur = _vIdx ?? v.length - 1;
     if (_stalls.length >= 2 && cur > 0) {
       _vIdx = cur - 1;
-      player.setVideoTrack(v[_vIdx!]);
+      player.setVideoTrack(v.elementAt(_vIdx!));
       _stalls.clear();
       _lastChange = now;
       if (mounted) setState(() {});
@@ -251,7 +254,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         player.setVideoTrack(VideoTrack.auto());
       } else {
         _vIdx = _vIdx! + 1;
-        player.setVideoTrack(v[_vIdx!]);
+        player.setVideoTrack(v.elementAt(_vIdx!));
       }
       _lastChange = now;
       if (mounted) setState(() {});
@@ -270,7 +273,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final i = v.indexWhere((x) => x.id == id);
       if (i >= 0) {
         _vIdx = i;
-        player.setVideoTrack(v[i]);
+        player.setVideoTrack(v.elementAt(i));
       }
     }
     setState(() {});
@@ -296,7 +299,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  // ---------- overlay ----------
   void _restartHide() {
     _hide?.cancel();
     if (_panel || _chanList) return;
@@ -354,18 +356,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // ---------- zapping ----------
   void _jump(int i) {
     final n = widget.channels!.length;
     if (n == 0 || i == _idx) return;
     _prevIdx = _idx;
     _idx = (i % n + n) % n;
     _retries = 0;
-    _progs = [];
-    _flashInfo();
-    _openCurrent();
-  }
-
-  void _zap(int d) => _jump(_idx + d);
-
-  void _lastChannel() {
+    _progs = <Programme>[];
