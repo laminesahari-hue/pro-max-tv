@@ -112,8 +112,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     const sizes =;
     player = Player(
-        configuration:
-            PlayerConfiguration(bufferSize: sizes[st.get<int>('buffer', 1)] * 1024 * 1024));
+        configuration: PlayerConfiguration(
+            bufferSize: sizes[st.get<int>('buffer', 1)] * 1024 * 1024));
     controller = VideoController(
       player,
       configuration: VideoControllerConfiguration(
@@ -122,15 +122,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!kIsWeb) {
       try {
-        final p = player.platform;
-        if (p is NativePlayer) {
-          p.setProperty('reconnect', '1');
-          p.setProperty('reconnect-streamed', '1');
-          p.setProperty('reconnect-delay-max', '5');
-          p.setProperty('network-timeout', '15');
-          if (_live && st.get<bool>('fast_zap', true)) {
-            p.setProperty('demuxer-readahead-secs', '4');
-          }
+        final dynamic p = player.platform;
+        p.setProperty('reconnect', '1');
+        p.setProperty('reconnect-streamed', '1');
+        p.setProperty('reconnect-delay-max', '5');
+        p.setProperty('network-timeout', '15');
+        if (_live && st.get<bool>('fast_zap', true)) {
+          p.setProperty('demuxer-readahead-secs', '4');
         }
       } catch (_) {}
     }
@@ -368,3 +366,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _openCurrent();
   }
 
+  void _zap(int d) => _jump(_idx + d);
+
+  void _lastChannel() {
