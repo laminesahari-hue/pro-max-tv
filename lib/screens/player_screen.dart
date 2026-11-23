@@ -663,7 +663,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 setState(() {});
               }),
             head("Format de l'image"),
-                opt(e.value, _fit == e.key, () => setState(() => _fit = e.key)),
+                            opt('Adapté', _fit == 0, () => setState(() => _fit = 0)),
+            opt('Remplir', _fit == 1, () => setState(() => _fit = 1)),
+            opt('Étirer', _fit == 2, () => setState(() => _fit = 2)),
+
             const SizedBox(height: 16),
           ]),
         ),
