@@ -604,25 +604,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Shortcuts(
-          shortcuts: const <ShortcutActivator, Intent>{
-            SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-            SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-            SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
-            SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-          },
+                body: Shortcuts(
+          shortcuts: !_show && !_panel && !_chanList
+              ? const <ShortcutActivator, Intent>{
+                  SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+                  SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                  SingleActivator(LogicalKeyboardKey.numpadEnter):
+                      ActivateIntent(),
+                }
+              : const <ShortcutActivator, Intent>{},
           child: Actions(
             actions: <Type, Action<Intent>>{
               ActivateIntent: CallbackAction<ActivateIntent>(
                 onInvoke: (_) {
-                  if (!_panel && !_chanList) {
-                    _toggleControls();
+                  if (!_show && !_panel && !_chanList) {
+                    _toggleControls(true);
                   }
                   return null;
                 },
               ),
             },
             child: Focus(
+
               focusNode: _focus,
               autofocus: true,
               onKeyEvent: _onKey,
@@ -903,10 +906,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
               },
             ),
           ],
-          Row(
+                    Row(
             children: <Widget>[
               if (_live)
                 _osdButton(
+                  focusNode: _playFocus,
                   icon: Icons.list,
                   label: 'Chaînes',
                   onPressed: () {
@@ -927,7 +931,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 builder: (context, snap) {
                   final playing = snap.data ?? player.state.playing;
                   return _osdButton(
-                    focusNode: _playFocus,
+                    focusNode: !_live ? _playFocus : null,
                     icon: playing ? Icons.pause : Icons.play_arrow,
                     label: playing ? 'Pause' : 'Lecture',
                     onPressed: () {
@@ -935,6 +939,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       _bumpControls();
                     },
                   );
+                },
+              ),
+
                 },
               ),
               if (!_live)
