@@ -585,150 +585,187 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  @override
+                  
+                
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Focus(
-        focusNode: _focus,
-        autofocus: true,
-        onKeyEvent: _onKey,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            if (_panel || _chanList) {
-              setState(() {
-                _panel = false;
-                _chanList = false;
-              });
-              _focus.requestFocus();
-            } else {
-              _toggleControls();
-            }
+    return PopScope(
+      canPop: !_panel && !_chanList && !_show,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_panel || _chanList) {
+          setState(() {
+            _panel = false;
+            _chanList = false;
+          });
+          _focus.requestFocus();
+        } else if (_show) {
+          _toggleControls(false);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Shortcuts(
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+            SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+            SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+            SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
           },
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              // Flux vidéo
-              Video(
-                controller: controller,
-                fit: _fits[_fit],
-                controls: NoVideoControls,
+          child: Actions(
+            actions: <Type, Action<Intent>>{
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (_) {
+                  if (!_panel && !_chanList) {
+                    _toggleControls();
+                  }
+                  return null;
+                },
               ),
-
-              // Indicateur de chargement
-              if (_buffering && _error == null)
-                const Center(
-                  child: CircularProgressIndicator(color: _kNeon),
-                ),
-
-              // Message d'erreur + bouton réessayer
-              if (_error != null)
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white24),
+            },
+            child: Focus(
+              focusNode: _focus,
+              autofocus: true,
+              onKeyEvent: _onKey,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (_panel || _chanList) {
+                    setState(() {
+                      _panel = false;
+                      _chanList = false;
+                    });
+                    _focus.requestFocus();
+                  } else {
+                    _toggleControls();
+                  }
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    // Flux vidéo
+                    Video(
+                      controller: controller,
+                      fit: _fits[_fit],
+                      controls: NoVideoControls,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.error_outline,
-                            color: Colors.redAccent, size: 40),
-                        const SizedBox(height: 10),
-                        Text(
-                          _error!,
-                          style: const TextStyle(color: Colors.white),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 14),
-                        FilledButton.icon(
-                          autofocus: true,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _kNeon,
-                            foregroundColor: Colors.black,
-                          ),
-                          onPressed: () {
-                            _retries = 0;
-                            _openCurrent();
-                          },
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Réessayer'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
 
-              // Saisie numérique de chaîne (ex. 124)
-              if (_digits.isNotEmpty)
-                Positioned(
-                  top: 28,
-                  right: 32,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _kNeon, width: 2),
-                    ),
-                    child: Text(
-                      _digits,
-                      style: const TextStyle(
-                        color: _kNeon,
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
+                    // Indicateur de chargement
+                    if (_buffering && _error == null)
+                      const Center(
+                        child: CircularProgressIndicator(color: _kNeon),
                       ),
-                    ),
-                  ),
-                ),
 
-              // Bannière d'info zapping / EPG
-              if (_live && (_showInfo || _show) && !_chanList)
-                Positioned(
-                  left: 24,
-                  right: 24,
-                  top: 20,
-                  child: _buildLiveHeader(),
-                ),
+                    // Message d'erreur + bouton réessayer
+                    if (_error != null)
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const Icon(Icons.error_outline,
+                                  color: Colors.redAccent, size: 40),
+                              const SizedBox(height: 10),
+                              Text(
+                                _error!,
+                                style: const TextStyle(color: Colors.white),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 14),
+                              FilledButton.icon(
+                                autofocus: true,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _kNeon,
+                                  foregroundColor: Colors.black,
+                                ),
+                                onPressed: () {
+                                  _retries = 0;
+                                  _openCurrent();
+                                },
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Réessayer'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
 
-              // Contrôles OSD bas (Lecture, barre VOD, Format, Pistes, Chaînes)
-              if (_show && !_chanList)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildBottomControls(),
-                ),
+                    // Saisie numérique de chaîne
+                    if (_digits.isNotEmpty)
+                      Positioned(
+                        top: 28,
+                        right: 32,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: _kNeon, width: 2),
+                          ),
+                          child: Text(
+                            _digits,
+                            style: const TextStyle(
+                              color: _kNeon,
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
 
-              // Panneau latéral gauche : Liste rapide des chaînes (Live)
-              if (_live && _chanList)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 360,
-                  child: _buildChannelDrawer(),
-                ),
+                    // Bannière d'info zapping / EPG EN BAS
+                    if (_live && (_showInfo || _show) && !_chanList)
+                      Positioned(
+                        left: 24,
+                        right: 24,
+                        bottom: _show ? 78 : 24,
+                        child: _buildLiveHeader(),
+                      ),
 
-              // Panneau latéral droit : Qualité / Audio / Sous-titres
-              if (_panel)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: _panelW,
-                  child: _buildTracksPanel(),
+                    // Boutons d'options en bas (Chaînes, Pause, Format, Pistes & Qualité)
+                    if (_show && !_chanList)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _buildBottomControls(),
+                      ),
+
+                    // Panneau latéral gauche : Liste rapide des chaînes
+                    if (_live && _chanList)
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: 360,
+                        child: _buildChannelDrawer(),
+                      ),
+
+                    // Panneau latéral droit : Qualité / Audio / Sous-titres
+                    if (_panel)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: _panelW,
+                        child: _buildTracksPanel(),
+                      ),
+                  ],
                 ),
-            ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+
 
     Widget _buildLiveHeader() {
     final nowProg = _progs.isNotEmpty ? _progs.first : null;
