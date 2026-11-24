@@ -85,14 +85,12 @@ class _BrowsePageState extends State<BrowsePage> {
   void _selectChannelForEpg(Item ch) {
     if (_focusedChannel?.id == ch.id) return;
     setState(() {
-      _focusedChannel = ch;
-      _focusedEpg = _epgCache[ch.id] ?? const <Programme>[];
+            _focusedEpg = _epgCache[ch.id.toString()] ?? const <Programme>[];
     });
-    if (_epgCache.containsKey(ch.id)) return;
+    if (_epgCache.containsKey(ch.id.toString())) return;
     app.epg.forChannel(ch, limit: 5).then((list) {
-      _epgCache[ch.id] = list;
-      if (mounted && _focusedChannel?.id == ch.id) {
-        setState(() => _focusedEpg = list);
+      _epgCache[ch.id.toString()] = list;
+
       }
     }).catchError((_) {});
   }
@@ -267,6 +265,12 @@ class _BrowsePageState extends State<BrowsePage> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                                          ],
+                    ),
+                  ),
+                ],
+              ),
+
                               const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
