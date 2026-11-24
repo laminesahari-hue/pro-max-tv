@@ -38,6 +38,7 @@ class _AppState extends State<App> {
   CatalogRepository? _repo;
   EpgService? _epg;
   Profile? _profile;
+  bool _showSplash = true;
 
   @override
   void initState() {
@@ -97,8 +98,12 @@ class _AppState extends State<App> {
         valueListenable: widget.store.settings.listenable(keys: ['accent']),
         builder: (_, __, ___) {
           final accent = accents[widget.store.get<int>('accent', 0)];
+          final nextScreen = _api == null
+              ? ProfileFormScreen(first: true, onSave: _add)
+              : Shell(key: ValueKey(_profile!.id));
+
           return MaterialApp(
-            title: 'Pro Max TV',
+            title: 'TV MAX PRO',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               useMaterial3: true,
@@ -119,10 +124,196 @@ class _AppState extends State<App> {
                     onRemove: _remove,
                     child: child!,
                   ),
-            home: _api == null
-                ? ProfileFormScreen(first: true, onSave: _add)
-                : Shell(key: ValueKey(_profile!.id)),
+            home: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 600),
+              child: _showSplash
+                  ? _SplashScreen(
+                      key: const ValueKey('splash'),
+                      accent: accent,
+                      onFinished: () {
+                        if (mounted) setState(() => _showSplash = false);
+                      },
+                    )
+                  : nextScreen,
+            ),
           );
         },
       );
+}
+
+class _SplashScreen extends StatefulWidget {
+  final Color accent;
+  final VoidCallback onFinished;
+
+  const _SplashScreen({
+    super.key,
+    required this.accent,
+    required this.onFinished,
+  });
+
+  @override
+  State<_SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<_SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _titleOpacity;
+  late final Animation<double> _lineWidth;
+  late final Animation<double> _subOpacity;
+  late final Animation<Offset> _subSlide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+
+    _scale = Tween<double>(begin: 0.82, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _titleOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.45, curve: Curves.easeIn),
+      ),
+    );
+
+    _lineWidth = Tween<double>(begin: 0.0, end: 260.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.25, 0.75, curve: Curves.easeInOutCubic),
+      ),
+    );
+
+    _subOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.55, 0.90, curve: Curves.easeOut),
+      ),
+    );
+
+    _subSlide = Tween<Offset>(
+      begin: const Offset(0, 0.4),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.55, 0.90, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _ctrl.forward();
+
+    Future.delayed(const Duration(milliseconds: 2800), () {
+      if (mounted) widget.onFinished();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0D12),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.center,
+            radius: 0.85,
+            colors: [
+              widget.accent.withOpacity(0.18),
+              const Color(0xFF0B0D12),
+            ],
+          ),
+        ),
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, _) {
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Opacity(
+                  opacity: _titleOpacity.value,
+                  child: Transform.scale(
+                    scale: _scale.value,
+                    child: RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontSize: 44,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 6,
+                          color: Colors.white,
+                        ),
+                        children: [
+                          const TextSpan(text: 'TV MAX '),
+                          TextSpan(
+                            text: 'PRO',
+                            style: TextStyle(
+                              color: widget.accent,
+                              shadows: [
+                                Shadow(
+                                  color: widget.accent.withOpacity(0.75),
+                                  blurRadius: 24,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: _lineWidth.value,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        widget.accent,
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Opacity(
+                  opacity: _subOpacity.value,
+                  child: FractionalTranslation(
+                    translation: _subSlide.value,
+                    child: const Text(
+                      'BY L S',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 10,
+                        color: Color(0xFF8A99AD),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
