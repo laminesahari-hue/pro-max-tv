@@ -938,9 +938,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-      ),
-    );
-  }
+      
+    
+  
 
   Widget _osdButton({
     FocusNode? focusNode,
