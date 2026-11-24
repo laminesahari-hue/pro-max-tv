@@ -402,6 +402,7 @@ class _BrowsePageState extends State<BrowsePage> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: InkWell(
+            autofocus: i == 0,
             onTap: () => openItem(context, it, channels: list),
             onLongPress: () => app.store.toggleFav(it),
             onFocusChange: (hasFocus) {
