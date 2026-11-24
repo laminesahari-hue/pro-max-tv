@@ -1,4 +1,4 @@
-import 'dart:async';
+himport 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1089,7 +1089,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
             for (final a in audios)
               ListTile(
-                title: Text(_trackName(a.id, a.title, a.lang),
+                title: Text(_trackName(a.id, a.title, a.language),
                     style: const TextStyle(color: Colors.white)),
                 trailing: player.state.track.audio.id == a.id
                     ? const Icon(Icons.check, color: _kNeon)
@@ -1105,7 +1105,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
             for (final s in subs)
               ListTile(
-                title: Text(_trackName(s.id, s.title, s.lang),
+                title: Text(_trackName(s.id, s.title, s.language),
                     style: const TextStyle(color: Colors.white)),
                 trailing: player.state.track.subtitle.id == s.id
                     ? const Icon(Icons.check, color: _kNeon)
