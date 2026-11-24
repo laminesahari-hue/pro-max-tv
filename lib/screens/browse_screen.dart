@@ -91,7 +91,7 @@ class _BrowsePageState extends State<BrowsePage> {
     app.epg.forChannel(ch, limit: 5).then((list) {
       _epgCache[ch.id.toString()] = list;
 
-      }
+      
     }).catchError((_) {});
   }
 
@@ -394,7 +394,8 @@ class _BrowsePageState extends State<BrowsePage> {
         final it = list[i];
         final fav = app.store.isFav(it);
         final isSelected = _focusedChannel?.id == it.id;
-        final cachedProgs = _epgCache[it.id];
+                final cachedProgs = _epgCache[it.id.toString()];
+
         final curProg =
             (cachedProgs != null && cachedProgs.isNotEmpty) ? cachedProgs.first : null;
 
