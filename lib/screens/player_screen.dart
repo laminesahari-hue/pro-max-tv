@@ -730,7 +730,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildLiveHeader() {
+    Widget _buildLiveHeader() {
     final nowProg = _progs.isNotEmpty ? _progs.first : null;
     final nextProg = _progs.length > 1 ? _progs[1] : null;
     return Container(
@@ -776,7 +776,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 if (nowProg != null) ...<Widget>[
                   const SizedBox(height: 4),
                   Text(
-                    '${_hm(nowProg.start)} - ${_hm(nowProg.stop)} · ${nowProg.title}',
+                    '${_hm(nowProg.start)} - ${_hm(nowProg.end)} · ${nowProg.title}',
                     style: const TextStyle(color: _kNeon, fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -969,5 +969,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+
+  Widget _buildChannelDrawer() {
+    final filtered = _selectedCat == 'all'
+        ? _allChannels
+        : _allChannels.where((c) => c.cat == _selectedCat).toList();
+    return Material(
+      color: const Color(0xEE101216),
+      child: Column(
+        children: <Widget>[
+          if (_cats.isNotEmpty)
+            SizedBox(
+              height: 48,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                itemCount: _cats.length,
+                itemBuilder: (context, i) {
+                  final cat = _cats[i];
+                  final sel = cat.id == _selectedCat;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(cat.name),
+                      selected: sel,
+                      selectedColor: _kNeon,
+                      labelStyle: TextStyle(
+                        color: sel ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      backgroundColor: Colors.white10,
+                      onSelected: (_) => setState(() => _selectedCat = cat.id),
+                    ),
+                  );
+                },
+              ),
+            ),
+          const Divider(height: 1, color: Colors.white12),
+          Expanded(
+            child: ListView.builder(
+              itemCount: filtered.length,
+              itemBuilder: (context, i) {
+                final ch = filtered[i];
+                final globalIdx =
+                    _allChannels.indexWhere((x) => x.id == ch.id);
+                final active = globalIdx == _idx;
+                return ListTile(
+                  autofocus: active,
+                  selected: active,
 
 
