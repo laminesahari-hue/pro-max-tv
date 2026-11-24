@@ -184,6 +184,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _abr = Timer.periodic(const Duration(seconds: 15), (_) => _abrTick());
     if (_live) _loadFolders();
     _openCurrent();
+        HardwareKeyboard.instance.addHandler(_onRawKey);
+
   }
 
   Future<void> _loadFolders() async {
@@ -431,8 +433,116 @@ class _PlayerScreenState extends State<PlayerScreen> {
     player.seek(clamped);
     _bumpControls();
   }
+  bool _onRawKey(KeyEvent event) {
+    if (!mounted) return false;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+    final key = event.logicalKey;
+
+    if (_panel || _chanList) {
+      if (key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.browserBack) {
+        setState(() {
+          _panel = false;
+          _chanList = false;
+        });
+        return true;
+      }
+      return false;
+    }
+
+    if (_show) {
+      if (key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.browserBack) {
+        _toggleControls(false);
+        return true;
+      }
+      _bumpControls();
+      return false;
+    }
+
+    if (key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.gameButtonA ||
+        key == LogicalKeyboardKey.space) {
+      _toggleControls(true);
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.channelUp) {
+      if (_live) {
+        _zap(1);
+      } else {
+        _toggleControls(true);
+      }
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.channelDown) {
+      if (_live) {
+        _zap(-1);
+      } else {
+        _toggleControls(true);
+      }
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (_live) {
+        if (_prevIdx != null) _jumpToIndex(_prevIdx!);
+      } else {
+        _seekBy(-_step);
+        _toggleControls(true);
+      }
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.arrowRight) {
+      if (_live) {
+        _toggleControls(true);
+      } else {
+        _seekBy(_step);
+        _toggleControls(true);
+      }
+      return true;
+    }
+
+    final digits = <LogicalKeyboardKey, String>{
+      LogicalKeyboardKey.digit0: '0',
+      LogicalKeyboardKey.numpad0: '0',
+      LogicalKeyboardKey.digit1: '1',
+      LogicalKeyboardKey.numpad1: '1',
+      LogicalKeyboardKey.digit2: '2',
+      LogicalKeyboardKey.numpad2: '2',
+      LogicalKeyboardKey.digit3: '3',
+      LogicalKeyboardKey.numpad3: '3',
+      LogicalKeyboardKey.digit4: '4',
+      LogicalKeyboardKey.numpad4: '4',
+      LogicalKeyboardKey.digit5: '5',
+      LogicalKeyboardKey.numpad5: '5',
+      LogicalKeyboardKey.digit6: '6',
+      LogicalKeyboardKey.numpad6: '6',
+      LogicalKeyboardKey.digit7: '7',
+      LogicalKeyboardKey.numpad7: '7',
+      LogicalKeyboardKey.digit8: '8',
+      LogicalKeyboardKey.numpad8: '8',
+      LogicalKeyboardKey.digit9: '9',
+      LogicalKeyboardKey.numpad9: '9',
+    };
+    if (digits.containsKey(key)) {
+      _onDigit(digits[key]!);
+      return true;
+    }
+
+    return false;
+  }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -565,7 +675,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override
-  void dispose() {
+  void dispose() { HardwareKeyboard.instance.removeHandler(_onRawKey);
+
     _saveProgress();
     for (final s in _subs) {
       s.cancel();
