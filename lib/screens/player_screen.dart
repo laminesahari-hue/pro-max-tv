@@ -806,10 +806,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildBottomControls() {
+    Widget _buildBottomControls() {
     final fitNames = <String>['Ajuster', 'Zoom', 'Étirer'];
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -934,6 +934,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
       ),
     );
   }
