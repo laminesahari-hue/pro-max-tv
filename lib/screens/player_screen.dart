@@ -942,8 +942,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-                },
-              ),
+                
+              
               if (!_live)
                 _osdButton(
                   icon: Icons.forward_10,
