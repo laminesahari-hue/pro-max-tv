@@ -970,7 +970,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildChannelDrawer() {
+    Widget _buildChannelDrawer() {
     final filtered = _selectedCat == 'all'
         ? _allChannels
         : _allChannels.where((c) => c.cat == _selectedCat).toList();
@@ -1018,5 +1018,106 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 return ListTile(
                   autofocus: active,
                   selected: active,
+                  selectedTileColor: _kNeon.withValues(alpha: 0.18),
+                  leading: Text(
+                    '${globalIdx + 1}',
+                    style: TextStyle(
+                      color: active ? _kNeon : Colors.white54,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  title: Text(
+                    ch.name,
+                    style: TextStyle(
+                      color: active ? _kNeon : Colors.white,
+                      fontWeight:
+                          active ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => _jumpToIndex(globalIdx),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildTracksPanel() {
+    final audios = player.state.tracks.audio
+        .where((t) => t.id != 'auto')
+        .toList();
+    final subs = player.state.tracks.subtitle
+        .where((t) => t.id != 'auto')
+        .toList();
+    final variants = _variants;
 
+    return Material(
+      color: const Color(0xEE101216),
+      child: Focus(
+        focusNode: _panelFocus,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: <Widget>[
+            const Text('Qualité vidéo',
+                style: TextStyle(
+                    color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
+            ListTile(
+              autofocus: true,
+              title: const Text('Auto (ABR)',
+                  style: TextStyle(color: Colors.white)),
+              trailing: _q == 'auto'
+                  ? const Icon(Icons.check, color: _kNeon)
+                  : null,
+              onTap: () => _setQuality('auto'),
+            ),
+            for (final v in variants)
+              ListTile(
+                title: Text(_vLabel(v),
+                    style: const TextStyle(color: Colors.white)),
+                trailing: _q == v.id
+                    ? const Icon(Icons.check, color: _kNeon)
+                    : null,
+                onTap: () => _setQuality(v.id),
+              ),
+            const Divider(color: Colors.white12),
+            const Text('Audio',
+                style: TextStyle(
+                    color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
+            for (final a in audios)
+              ListTile(
+                title: Text(_trackName(a.id, a.title, a.lang),
+                    style: const TextStyle(color: Colors.white)),
+                trailing: player.state.track.audio.id == a.id
+                    ? const Icon(Icons.check, color: _kNeon)
+                    : null,
+                onTap: () {
+                  player.setAudioTrack(a);
+                  setState(() {});
+                },
+              ),
+            const Divider(color: Colors.white12),
+            const Text('Sous-titres',
+                style: TextStyle(
+                    color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
+            for (final s in subs)
+              ListTile(
+                title: Text(_trackName(s.id, s.title, s.lang),
+                    style: const TextStyle(color: Colors.white)),
+                trailing: player.state.track.subtitle.id == s.id
+                    ? const Icon(Icons.check, color: _kNeon)
+                    : null,
+                onTap: () {
+                  player.setSubtitleTrack(s);
+                  setState(() {});
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
