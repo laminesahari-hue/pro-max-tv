@@ -290,3 +290,261 @@ class _FullscreenShowcase extends StatelessWidget {
             bottom: 185,
             right: w >= 720 ? w * 0.42 : 20,
             child: Column(
+            
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent.withOpacity(0.20),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: accent, width: 1),
+                      ),
+                      child: Text(
+                        kindLabel.toUpperCase(),
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                    if (year.isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      Text(
+                        year,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (active.rating5 > 0) ...[
+                      const SizedBox(width: 10),
+                      Icon(Icons.star_rounded, color: accent, size: 17),
+                      const SizedBox(width: 3),
+                      Text(
+                        active.rating5.toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  active.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: w >= 720 ? 34 : 24,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1.12,
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black87,
+                        blurRadius: 12,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                ),
+                if (plot.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    plot,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  'Pro Max TV Originals',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 18,
+            height: 145,
+            child: ListView.separated(
+              padding: EdgeInsets.symmetric(horizontal: w >= 720 ? 44 : 20),
+              scrollDirection: Axis.horizontal,
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 16),
+              itemBuilder: (context, idx) {
+                final item = items[idx];
+                return _LandscapePosterCard(
+                  item: item,
+                  imageUrl: _backdropOf(item),
+                  isActive: item.key == active.key,
+                  accent: accent,
+                  onFocus: () => onFocusItem(item),
+                  onTap: () => onTapItem(item),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LandscapePosterCard extends StatefulWidget {
+  final Item item;
+  final String imageUrl;
+  final bool isActive;
+  final Color accent;
+  final VoidCallback onFocus;
+  final VoidCallback onTap;
+
+  const _LandscapePosterCard({
+    required this.item,
+    required this.imageUrl,
+    required this.isActive,
+    required this.accent,
+    required this.onFocus,
+    required this.onTap,
+  });
+
+  @override
+  State<_LandscapePosterCard> createState() => _LandscapePosterCardState();
+}
+
+class _LandscapePosterCardState extends State<_LandscapePosterCard> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final highlighted = _focused || widget.isActive;
+
+    return InkWell(
+      onTap: widget.onTap,
+      onFocusChange: (f) {
+        setState(() => _focused = f);
+        if (f) widget.onFocus();
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedScale(
+        scale: _focused ? 1.06 : 1.0,
+        duration: const Duration(milliseconds: 170),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 170),
+          width: 230,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: highlighted ? widget.accent : Colors.white12,
+              width: _focused ? 3.0 : (widget.isActive ? 2.0 : 1.0),
+            ),
+            boxShadow: _focused
+                ? [
+                    BoxShadow(
+                      color: widget.accent.withOpacity(0.45),
+                      blurRadius: 16,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : [],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(11),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(
+                  widget.imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFF1A202C),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(10),
+                    child: Text(
+                      widget.item.name,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.45, 1.0],
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.85),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: widget.accent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_rounded,
+                      size: 14,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 8,
+                  child: Text(
+                    widget.item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 6),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
