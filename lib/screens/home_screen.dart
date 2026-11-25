@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../core/models.dart';
@@ -18,12 +19,19 @@ class _HomePageState extends State<HomePage> {
   late final AppScope app;
   late Future<List<List<Item>>> _f;
   Item? _spotlight;
+  Timer? _focusDebounce;
 
   @override
   void initState() {
     super.initState();
     app = AppScope.of(context);
     _f = _load();
+  }
+
+  @override
+  void dispose() {
+    _focusDebounce?.cancel();
+    super.dispose();
   }
 
   Future<List<List<Item>>> _load({bool refresh = false}) async {
@@ -40,18 +48,21 @@ class _HomePageState extends State<HomePage> {
     return [vod, ser, live];
   }
 
-  List<Item> _recent(List<Item> l) =>
-      ([...l]..sort((a, b) => b.added.compareTo(a.added))).take(25).toList();
-
-  List<Item> _top(List<Item> l) => ([...l.where((i) => i.rating5 > 0)]
-        ..sort((a, b) => b.rating5.compareTo(a.rating5)))
-      .take(25)
-      .toList();
+  List<Item> _fewRecent(List<Item> l, int count) =>
+      ([...l]..sort((a, b) => b.added.compareTo(a.added))).take(count).toList();
 
   List<Item> _heroItems(List<Item> vod, List<Item> ser) {
-    final all = [...vod, ...ser].where((i) => i.image.isNotEmpty).toList()
-      ..sort((a, b) => b.added.compareTo(a.added));
-    return all.take(12).toList();
+    final topVod = _fewRecent(vod.where((i) => i.image.isNotEmpty).toList(), 5);
+    final topSer = _fewRecent(ser.where((i) => i.image.isNotEmpty).toList(), 5);
+    return [...topVod, ...topSer];
+  }
+
+  void _onSpotlightFocus(Item item) {
+    if (_spotlight?.key == item.key) return;
+    _focusDebounce?.cancel();
+    _focusDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (mounted) setState(() => _spotlight = item);
+    });
   }
 
   @override
@@ -73,112 +84,84 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
-        final vod = snap.data![0], ser = snap.data![1], live = snap.data![2];
+        final vod = snap.data!, ser = snap.data!, live = snap.data!;
+        final fewMovies = _fewRecent(vod, 8);
+        final fewSeries = _fewRecent(ser, 8);
 
-        return RefreshIndicator(
-          color: neonGreen,
-          onRefresh: () async {
-            setState(() => _f = _load(refresh: true));
-            await _f;
-          },
-          child: ValueListenableBuilder(
-            valueListenable: app.store.user.listenable(),
-            builder: (_, __, ___) {
-              final st = app.store;
-              final cont = st.continueWatching();
-              final byKey = {for (final e in cont) e.item.key: e};
-              final favs = st.favorites();
-              final favLive = favs.where((i) => i.kind == Kind.live).toList();
-              final recentLive = st.recentLive();
-              final featured = _heroItems(vod, ser);
-              final activeItem = (_spotlight != null &&
-                      featured.any((x) => x.key == _spotlight!.key))
-                  ? _spotlight!
-                  : (featured.isNotEmpty ? featured.first : null);
+        return ValueListenableBuilder(
+          valueListenable: app.store.user.listenable(),
+          builder: (_, __, ___) {
+            final st = app.store;
+            final cont = st.continueWatching().take(8).toList();
+            final byKey = {for (final e in cont) e.item.key: e};
+            final recentLive = st.recentLive().take(8).toList();
+            final featured = _heroItems(vod, ser);
+            final activeItem = (_spotlight != null &&
+                    featured.any((x) => x.key == _spotlight!.key))
+                ? _spotlight!
+                : (featured.isNotEmpty ? featured.first : null);
 
-              return ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  if (activeItem != null)
-                    _FullscreenShowcase(
-                      active: activeItem,
-                      items: featured,
-                      accent: neonGreen,
-                      onFocusItem: (item) {
-                        if (_spotlight?.key != item.key) {
-                          setState(() => _spotlight = item);
-                        }
-                      },
-                      onTapItem: (item) => openItem(context, item),
-                    )
-                  else
-                    const SizedBox(height: 80),
-                  if (recentLive.isNotEmpty)
-                    Rail(
-                      title: 'Chaînes récentes',
-                      items: recentLive,
-                      onTap: (i) => openItem(context, i, channels: recentLive),
-                    ),
-                  if (cont.isNotEmpty)
-                    Rail(
-                      title: 'Reprendre la lecture',
-                      items: [for (final e in cont) e.item],
-                      progress: (i) => byKey[i.key]!.progress,
-                      onTap: (i) {
-                        final e = byKey[i.key]!;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PlayerScreen.vod(
-                              url: e.url,
-                              title: e.title,
-                              item: e.item,
-                            ),
+            return ListView(
+              padding: EdgeInsets.zero,
+              cacheExtent: 600,
+              children: [
+                if (activeItem != null)
+                  _FullscreenShowcase(
+                    active: activeItem,
+                    items: featured,
+                    accent: neonGreen,
+                    onFocusItem: _onSpotlightFocus,
+                    onTapItem: (item) => openItem(context, item),
+                  )
+                else
+                  const SizedBox(height: 84),
+                if (cont.isNotEmpty)
+                  Rail(
+                    title: 'Reprendre la lecture',
+                    items: [for (final e in cont) e.item],
+                    progress: (i) => byKey[i.key]!.progress,
+                    onTap: (i) {
+                      final e = byKey[i.key]!;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PlayerScreen.vod(
+                            url: e.url,
+                            title: e.title,
+                            item: e.item,
                           ),
-                        );
-                      },
-                    ),
-                  if (favs.isNotEmpty)
-                    Rail(
-                      title: 'Mes favoris',
-                      items: favs,
-                      onTap: (i) => openItem(context, i, channels: favLive),
-                    ),
-                  if (!app.api.hasVod && live.isNotEmpty)
-                    Rail(
-                      title: 'Toutes les chaînes',
-                      items: live.take(40).toList(),
-                      onTap: (i) => openItem(context, i, channels: live),
-                    ),
-                  if (vod.isNotEmpty)
-                    Rail(
-                      title: 'Films récents',
-                      items: _recent(vod),
-                      onTap: (i) => openItem(context, i),
-                    ),
-                  if (ser.isNotEmpty)
-                    Rail(
-                      title: 'Séries récentes',
-                      items: _recent(ser),
-                      onTap: (i) => openItem(context, i),
-                    ),
-                  if (_top(vod).isNotEmpty)
-                    Rail(
-                      title: 'Films les mieux notés',
-                      items: _top(vod),
-                      onTap: (i) => openItem(context, i),
-                    ),
-                  if (_top(ser).isNotEmpty)
-                    Rail(
-                      title: 'Séries les mieux notées',
-                      items: _top(ser),
-                      onTap: (i) => openItem(context, i),
-                    ),
-                  const SizedBox(height: 32),
-                ],
-              );
-            },
-          ),
+                        ),
+                      );
+                    },
+                  ),
+                if (recentLive.isNotEmpty)
+                  Rail(
+                    title: 'Chaînes récentes',
+                    items: recentLive,
+                    onTap: (i) => openItem(context, i, channels: recentLive),
+                  ),
+                if (!app.api.hasVod && live.isNotEmpty)
+                  Rail(
+                    title: 'Chaînes en direct',
+                    items: live.take(12).toList(),
+                    onTap: (i) => openItem(context, i, channels: live),
+                  ),
+                if (fewMovies.isNotEmpty)
+                  Rail(
+                    title: 'Quelques films',
+                    items: fewMovies,
+                    onTap: (i) => openItem(context, i),
+                  ),
+                if (fewSeries.isNotEmpty)
+                  Rail(
+                    title: 'Quelques séries',
+                    items: fewSeries,
+                    onTap: (i) => openItem(context, i),
+                  ),
+                const SizedBox(height: 28),
+              ],
+            );
+          },
         );
       },
     );
@@ -227,7 +210,7 @@ class _FullscreenShowcase extends StatelessWidget {
   Widget build(BuildContext context) {
     final h = MediaQuery.of(context).size.height;
     final w = MediaQuery.of(context).size.width;
-    final stageHeight = (h * 0.88).clamp(430.0, 740.0);
+    final stageHeight = (h * 0.86).clamp(420.0, 700.0);
     final bgUrl = _backdropOf(active);
     final plot = _plotOf(active);
     final year = _yearOf(active);
@@ -239,20 +222,15 @@ class _FullscreenShowcase extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 420),
-            child: Image.network(
-              bgUrl,
-              key: ValueKey(bgUrl),
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              width: double.infinity,
-              height: double.infinity,
-              errorBuilder: (_, __, ___) =>
-                  Container(color: const Color(0xFF121722)),
-            ),
+          Image.network(
+            bgUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            cacheWidth: 1280,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) =>
+                Container(color: const Color(0xFF121722)),
           ),
-          // Dégradé latéral gauche pour la lisibilité du texte
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -268,7 +246,6 @@ class _FullscreenShowcase extends StatelessWidget {
               ),
             ),
           ),
-          // Dégradé inférieur vers le fond sombre
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -284,13 +261,11 @@ class _FullscreenShowcase extends StatelessWidget {
               ),
             ),
           ),
-          // Bloc d'informations du film/série à gauche
           Positioned(
             left: w >= 720 ? 44 : 20,
-            bottom: 185,
+            bottom: 180,
             right: w >= 720 ? w * 0.42 : 20,
             child: Column(
-            
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -352,13 +327,6 @@ class _FullscreenShowcase extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     height: 1.12,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black87,
-                        blurRadius: 12,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
                   ),
                 ),
                 if (plot.isNotEmpty) ...[
@@ -389,8 +357,8 @@ class _FullscreenShowcase extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 18,
-            height: 145,
+            bottom: 16,
+            height: 142,
             child: ListView.separated(
               padding: EdgeInsets.symmetric(horizontal: w >= 720 ? 44 : 20),
               scrollDirection: Axis.horizontal,
@@ -446,105 +414,92 @@ class _LandscapePosterCardState extends State<_LandscapePosterCard> {
     return InkWell(
       onTap: widget.onTap,
       onFocusChange: (f) {
-        setState(() => _focused = f);
+        if (_focused != f) setState(() => _focused = f);
         if (f) widget.onFocus();
       },
       borderRadius: BorderRadius.circular(14),
-      child: AnimatedScale(
-        scale: _focused ? 1.06 : 1.0,
-        duration: const Duration(milliseconds: 170),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 170),
-          width: 230,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: highlighted ? widget.accent : Colors.white12,
-              width: _focused ? 3.0 : (widget.isActive ? 2.0 : 1.0),
-            ),
-            boxShadow: _focused
-                ? [
-                    BoxShadow(
-                      color: widget.accent.withOpacity(0.45),
-                      blurRadius: 16,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : [],
+      child: Container(
+        width: 225,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: highlighted ? widget.accent : Colors.white12,
+            width: _focused ? 3.0 : (widget.isActive ? 2.0 : 1.0),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(11),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(
-                  widget.imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: const Color(0xFF1A202C),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(10),
-                    child: Text(
-                      widget.item.name,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: const [0.45, 1.0],
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.85),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: widget.accent,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(
-                      Icons.workspace_premium_rounded,
-                      size: 14,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 8,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                widget.imageUrl,
+                fit: BoxFit.cover,
+                cacheWidth: 450,
+                errorBuilder: (_, __, ___) => Container(
+                  color: const Color(0xFF1A202C),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.all(10),
                   child: Text(
                     widget.item.name,
-                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      shadows: [
-                        Shadow(color: Colors.black, blurRadius: 6),
-                      ],
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-              ],
-            ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0.45, 1.0],
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.85),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+
+                    color: widget.accent,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.workspace_premium_rounded,
+                    size: 14,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 8,
+                child: Text(
+                  widget.item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
+
+                  
