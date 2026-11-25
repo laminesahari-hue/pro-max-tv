@@ -221,8 +221,8 @@ function setType(t,el){
   document.getElementById('xtreamFields').style.display=t==='xtream'?'block':'none';
   document.getElementById('magFields').style.display=t==='mag'?'block':'none';
   document.getElementById('urlLbl').innerText=t==='m3u'?'URL de la playlist':(t==='mag'?'URL du portail':'URL du serveur');
-  document.getElementById('url').placeholder=t==='m3u'?'http://exemple.com';
-}
+    document.getElementById('url').placeholder=t==='m3u'?'http://exemple.com/playlist.m3u':'http://exemple.com:8080';
+
 async function send(){
   const btn=document.getElementById('btn'), msg=document.getElementById('msg');
   btn.disabled=true; msg.style.color='#9aa4b2'; msg.innerText='Connexion en cours sur la TV...';
