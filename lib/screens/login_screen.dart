@@ -275,3 +275,213 @@ async function send(){
     }
     final p = Profile(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: _name.trim().isEmpty ? _defaultName() : _name.trim(),
+      type: _type,
+      url: url,
+      user: _user.trim(),
+      pass: _pass,
+      mac: mac,
+    );
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await buildSource(p).validate();
+      widget.onSave(p);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Widget _buildQrCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.qr_code_scanner, color: Color(0xFF69F028), size: 30),
+          const SizedBox(height: 8),
+          const Text(
+            'Connexion rapide par téléphone',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Scannez ce QR Code avec votre mobile (même Wi-Fi) pour coller votre abonnement.',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: QrImageView(
+              data: _qrUrl!,
+              version: QrVersions.auto,
+              size: 175,
+              backgroundColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _qrUrl!,
+            style: const TextStyle(
+              color: Color(0xFF69F028),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForm(BuildContext context) {
+    return FocusTraversalGroup(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (widget.first) ...[
+          Text('PRO MAX TV',
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 2)),
+          const SizedBox(height: 20),
+        ],
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'xtream', label: Text('Xtream')),
+            ButtonSegment(value: 'm3u', label: Text('M3U')),
+            ButtonSegment(value: 'mag', label: Text('MAG')),
+          ],
+          selected: {_type},
+          onSelectionChanged: (s) => setState(() {
+            _type = s.first;
+            _error = null;
+          }),
+        ),
+        const SizedBox(height: 12),
+        TvField(
+          label: 'Nom (facultatif)',
+          value: _name,
+          onChanged: (v) => setState(() => _name = v),
+        ),
+        TvField(
+          label: _type == 'm3u'
+              ? 'URL de la playlist'
+              : _type == 'mag'
+                  ? 'URL du portail'
+                  : 'URL du serveur',
+          hint: _type == 'm3u'
+              ? 'http://exemple.com'
+              : _type == 'mag'
+                  ? 'http://exemple.com'
+                  : 'http://exemple.com:8080',
+          value: _url,
+          keyboardType: TextInputType.url,
+          onChanged: (v) => setState(() => _url = v),
+        ),
+        if (_type == 'xtream') ...[
+          TvField(
+            label: 'Utilisateur',
+            value: _user,
+            onChanged: (v) => setState(() => _user = v),
+          ),
+          TvField(
+            label: 'Mot de passe',
+            value: _pass,
+            obscure: true,
+            onChanged: (v) => setState(() => _pass = v),
+          ),
+        ],
+        if (_type == 'mag')
+          TvField(
+            label: 'Adresse MAC',
+            hint: '00:1A:79:XX:XX:XX',
+            value: _mac,
+            onChanged: (v) => setState(() => _mac = v),
+          ),
+        const SizedBox(height: 12),
+        if (_error != null)
+          Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _loading ? null : _submit,
+            child: _loading
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Ajouter'),
+          ),
+        ),
+        if (widget.first) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.live_tv),
+              label: const Text('Essayer les chaînes gratuites'),
+              onPressed: () => widget.onSave(const Profile(
+                  id: 'free', name: 'Chaînes gratuites', type: 'free')),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.of(context).size.width >= 760;
+    return Scaffold(
+      appBar:
+          widget.first ? null : AppBar(title: const Text('Ajouter une source')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: wide && _qrUrl != null
+              ? ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 840),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(flex: 3, child: _buildForm(context)),
+                      const SizedBox(width: 28),
+                      Expanded(flex: 2, child: _buildQrCard()),
+                    ],
+                  ),
+                )
+              : ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildForm(context),
+                      if (_qrUrl != null) ...[
+                        const SizedBox(height: 24),
+                        _buildQrCard(),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
