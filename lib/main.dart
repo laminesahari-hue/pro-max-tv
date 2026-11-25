@@ -1,348 +1,338 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:media_kit/media_kit.dart';
-import 'core/profile.dart';
-import 'core/scope.dart';
-import 'core/store.dart';
-import 'data/catalog_repository.dart';
-import 'data/epg_service.dart';
-import 'screens/login_screen.dart';
-import 'screens/shell.dart';
-import 'services/source.dart';
+import '../core/models.dart';
+import '../core/scope.dart';
+import 'browse_screen.dart';
+import 'detail_screen.dart';
+import 'guide_screen.dart';
+import 'home_screen.dart';
+import 'search_screen.dart';
+import 'settings_screen.dart';
 
-const accents = [
-  Color(0xFFE50914),
-  Color(0xFF2979FF),
-  Color(0xFF00C853),
-  Color(0xFFFF9100),
-  Color(0xFF9C27B0),
-];
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
-  final store = await Store.open();
-  runApp(App(store: store));
+class _Tab {
+  final String label;
+  final Widget page;
+  _Tab(this.label, this.page);
 }
 
-class App extends StatefulWidget {
-  final Store store;
-  const App({super.key, required this.store});
+class Shell extends StatefulWidget {
+  const Shell({super.key});
 
   @override
-  State<App> createState() => _AppState();
+  State<Shell> createState() => _ShellState();
 }
 
-class _AppState extends State<App> {
-  Source? _api;
-  CatalogRepository? _repo;
-  EpgService? _epg;
-  Profile? _profile;
-  bool _showSplash = true;
+class _ShellState extends State<Shell> {
+  static bool _auto = false;
+  late String _sel;
+  DateTime? _lastBack;
 
   @override
   void initState() {
     super.initState();
-    final p = widget.store.active;
-    if (p != null) _activate(p, notify: false);
-  }
-
-  void _activate(Profile p, {bool notify = true}) {
-    final st = widget.store;
-    st.setActive(p.id);
-    final a = buildSource(p);
-    final repo = CatalogRepository(a, st, p.id);
-    final epg = EpgService(st, a);
-    epg.init();
-    void apply() {
-      _profile = p;
-      _api = a;
-      _repo = repo;
-      _epg = epg;
-    }
-
-    if (notify) {
-      setState(apply);
-    } else {
-      apply();
+    final app = AppScope.of(context);
+    final start = app.store.get<String>('start_tab', 'home');
+    _sel = start == 'home' ? 'Accueil' : 'TV Live';
+    if (start == 'last' && !_auto) {
+      _auto = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resumeLast(app));
     }
   }
 
-  Future<void> _add(Profile p) async {
-    final l = widget.store.profiles.where((x) => x.id != p.id).toList()..add(p);
-    await widget.store.saveProfiles(l);
-    _activate(p);
+  Future<void> _resumeLast(AppScope app) async {
+    final recents = app.store.recentLive();
+    if (recents.isEmpty || !mounted) return;
+    var list = recents;
+    try {
+      list = await app.repo.items(Kind.live);
+    } catch (_) {}
+    if (!mounted) return;
+    final ok = list.any((c) => c.id == recents.first.id);
+    openItem(context, recents.first, channels: ok ? list : recents);
   }
 
-  Future<void> _remove(Profile p) async {
-    final st = widget.store;
-    final l = st.profiles.where((x) => x.id != p.id).toList();
-    await st.saveProfiles(l);
-    await st.removeProfileData(p.id);
-    if (_profile?.id != p.id) return;
-    if (l.isEmpty) {
-      await st.settings.delete('active');
-      setState(() {
-        _profile = null;
-        _api = null;
-        _repo = null;
-        _epg = null;
-      });
-    } else {
-      _activate(l.first);
+  void _onBack(bool didPop, dynamic result) {
+    if (didPop) return;
+    if (_sel != 'Accueil') {
+      setState(() => _sel = 'Accueil');
+      return;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) => ValueListenableBuilder(
-        valueListenable: widget.store.settings.listenable(keys: ['accent']),
-        builder: (_, __, ___) {
-          final accent = accents[widget.store.get<int>('accent', 0)];
-          final nextScreen = _api == null
-              ? ProfileFormScreen(first: true, onSave: _add)
-              : Shell(key: ValueKey(_profile!.id));
-
-                    return MaterialApp(
-            title: 'TV MAX PRO',
-            debugShowCheckedModeBanner: false,
-            shortcuts: <ShortcutActivator, Intent>{
-              ...WidgetsApp.defaultShortcuts,
-              const SingleActivator(LogicalKeyboardKey.select):
-                  const ActivateIntent(),
-              const SingleActivator(LogicalKeyboardKey.enter):
-                  const ActivateIntent(),
-              const SingleActivator(LogicalKeyboardKey.numpadEnter):
-                  const ActivateIntent(),
-              const SingleActivator(LogicalKeyboardKey.gameButtonA):
-                  const ActivateIntent(),
-            },
-            theme: ThemeData(
-              useMaterial3: true,
-              brightness: Brightness.dark,
-              colorSchemeSeed: accent,
-              scaffoldBackgroundColor: const Color(0xFF0B0D12),
-              focusColor: const Color(0xFF69F028).withValues(alpha: 0.38),
-              hoverColor: const Color(0xFF69F028).withValues(alpha: 0.25),
-              highlightColor: const Color(0xFF69F028).withValues(alpha: 0.30),
-              cardTheme: CardThemeData(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              listTileTheme: ListTileThemeData(
-                selectedTileColor:
-                    const Color(0xFF69F028).withValues(alpha: 0.22),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-
-            builder: (ctx, child) => _api == null
-                ? child!
-                : AppScope(
-                    api: _api!,
-                    repo: _repo!,
-                    epg: _epg!,
-                    store: widget.store,
-                    profile: _profile!,
-                    onActivate: _activate,
-                    onAdd: _add,
-                    onRemove: _remove,
-                    child: child!,
-                  ),
-            home: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 600),
-              child: _showSplash
-                  ? _SplashScreen(
-                      key: const ValueKey('splash'),
-                      accent: accent,
-                      onFinished: () {
-                        if (mounted) setState(() => _showSplash = false);
-                      },
-                    )
-                  : nextScreen,
-            ),
-          );
-        },
-      );
-}
-
-class _SplashScreen extends StatefulWidget {
-  final Color accent;
-  final VoidCallback onFinished;
-
-  const _SplashScreen({
-    super.key,
-    required this.accent,
-    required this.onFinished,
-  });
-
-  @override
-  State<_SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<_SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
-  late final Animation<double> _titleOpacity;
-  late final Animation<double> _lineWidth;
-  late final Animation<double> _subOpacity;
-  late final Animation<Offset> _subSlide;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    );
-
-    _scale = Tween<double>(begin: 0.82, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
-      ),
-    );
-
-    _titleOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.0, 0.45, curve: Curves.easeIn),
-      ),
-    );
-
-    _lineWidth = Tween<double>(begin: 0.0, end: 260.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.25, 0.75, curve: Curves.easeInOutCubic),
-      ),
-    );
-
-    _subOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.55, 0.90, curve: Curves.easeOut),
-      ),
-    );
-
-    _subSlide = Tween<Offset>(
-      begin: const Offset(0, 0.4),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.55, 0.90, curve: Curves.easeOutCubic),
-      ),
-    );
-
-    _ctrl.forward();
-
-    Future.delayed(const Duration(milliseconds: 2800), () {
-      if (mounted) widget.onFinished();
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
+    final now = DateTime.now();
+    if (_lastBack != null &&
+        now.difference(_lastBack!) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBack = now;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Appuie encore sur Retour pour quitter'),
+        duration: Duration(seconds: 2),
+      ));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0B0D12),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 0.85,
-            colors: [
-              widget.accent.withOpacity(0.18),
-              const Color(0xFF0B0D12),
-            ],
-          ),
-        ),
-        child: AnimatedBuilder(
-          animation: _ctrl,
-          builder: (context, _) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+    final app = AppScope.of(context);
+    final st = app.store;
+    const neonGreen = Color(0xFF69F028);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _onBack,
+      child: ValueListenableBuilder(
+        valueListenable: st.settings.listenable(),
+        builder: (_, __, ___) {
+          final tabs = <_Tab>[
+            _Tab('Accueil', const HomePage()),
+            if (st.get('show_live', true))
+              _Tab('TV Live', const BrowsePage(kind: Kind.live)),
+            if (st.get('show_live', true))
+              _Tab('Guide', const GuidePage()),
+            if (st.get('show_vod', true) && app.api.hasVod)
+              _Tab('Films', const BrowsePage(kind: Kind.vod)),
+            if (st.get('show_series', true) && app.api.hasSeries)
+              _Tab('Séries', const BrowsePage(kind: Kind.series)),
+          ];
+
+          final isSettings = _sel == 'Réglages';
+          var i = tabs.indexWhere((t) => t.label == _sel);
+          if (i < 0) i = 0;
+
+          final tick = st.get<int>('refresh', 0);
+          final page = isSettings
+              ? KeyedSubtree(
+                  key: ValueKey('Réglages$tick'),
+                  child: const SettingsPage(),
+                )
+              : KeyedSubtree(
+                  key: ValueKey('${tabs[i].label}$tick'),
+                  child: tabs[i].page,
+                );
+
+          return Scaffold(
+            backgroundColor: const Color(0xFF0A0D12),
+            body: Stack(
               children: [
-                Opacity(
-                  opacity: _titleOpacity.value,
-                  child: Transform.scale(
-                    scale: _scale.value,
-                    child: RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        style: const TextStyle(
-                          fontSize: 44,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 6,
-                          color: Colors.white,
-                        ),
-                        children: [
-                          const TextSpan(text: 'TV MAX '),
-                          TextSpan(
-                            text: 'PRO',
-                            style: TextStyle(
-                              color: widget.accent,
-                              shadows: [
-                                Shadow(
-                                  color: widget.accent.withOpacity(0.75),
-                                  blurRadius: 24,
-                                ),
-                              ],
-                            ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: (!isSettings && tabs[i].label == 'Accueil') ? 0 : 72,
+                    ),
+                    child: page,
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: _FloatingTopBar(
+                      tabs: tabs,
+                      selectedLabel: _sel,
+                      accent: neonGreen,
+                      onSelectLabel: (lbl) => setState(() => _sel = lbl),
+                      onSearch: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => Scaffold(
+                            appBar: AppBar(title: const Text('Recherche')),
+                            body: const SearchPage(),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: _lineWidth.value,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(2),
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        widget.accent,
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Opacity(
-                  opacity: _subOpacity.value,
-                  child: FractionalTranslation(
-                    translation: _subSlide.value,
-                    child: const Text(
-                      'BY L S',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 10,
-                        color: Color(0xFF8A99AD),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ],
-            );
-          },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FloatingTopBar extends StatelessWidget {
+  final List<_Tab> tabs;
+  final String selectedLabel;
+  final Color accent;
+  final ValueChanged<String> onSelectLabel;
+  final VoidCallback onSearch;
+
+  const _FloatingTopBar({
+    required this.tabs,
+    required this.selectedLabel,
+    required this.accent,
+    required this.onSelectLabel,
+    required this.onSearch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width >= 680;
+
+    return Container(
+      height: 68,
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 32 : 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withOpacity(0.80),
+            Colors.black.withOpacity(0.35),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: Row(
+        children: [
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+                color: Colors.white,
+              ),
+              children: [
+                TextSpan(text: 'PRO', style: TextStyle(color: accent)),
+                const TextSpan(text: 'MAX'),
+                TextSpan(text: 'TV', style: TextStyle(color: accent)),
+              ],
+            ),
+          ),
+          const Spacer(),
+          Flexible(
+            flex: 4,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final t in tabs) ...[
+                    _NavTabPill(
+                      label: t.label,
+                      selected: selectedLabel == t.label,
+                      accent: accent,
+                      onTap: () => onSelectLabel(t.label),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          _CircleActionBtn(
+            icon: Icons.search_rounded,
+            accent: accent,
+            selected: false,
+            onTap: onSearch,
+          ),
+          const SizedBox(width: 10),
+          _CircleActionBtn(
+            icon: Icons.person_outline_rounded,
+            accent: accent,
+            selected: selectedLabel == 'Réglages',
+            onTap: () => onSelectLabel('Réglages'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavTabPill extends StatefulWidget {
+  final String label;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _NavTabPill({
+    required this.label,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  State<_NavTabPill> createState() => _NavTabPillState();
+}
+
+class _NavTabPillState extends State<_NavTabPill> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      onFocusChange: (f) => setState(() => _focused = f),
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
+        decoration: BoxDecoration(
+          color: widget.selected
+              ? Colors.white.withOpacity(0.18)
+              : _focused
+                  ? widget.accent.withOpacity(0.22)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: _focused ? widget.accent : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          widget.label,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: (widget.selected || _focused)
+                ? FontWeight.w700
+                : FontWeight.w500,
+            color: (widget.selected || _focused) ? Colors.white : Colors.white70,
+          ),
         ),
       ),
     );
   }
 }
+
+class _CircleActionBtn extends StatefulWidget {
+  final IconData icon;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CircleActionBtn({
+    required this.icon,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  State<_CircleActionBtn> createState() => _CircleActionBtnState();
+}
+
+class _CircleActionBtnState extends State<_CircleActionBtn> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      onFocusChange: (f) => setState(() => _focused = f),
+      borderRadius: BorderRadius.circular(24),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: widget.selected
