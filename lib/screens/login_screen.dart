@@ -269,7 +269,9 @@ async function send(){
       setState(() => _error = 'Utilisateur et mot de passe obligatoires');
       return;
     }
-    if (_type == 'mag' &&
-        !RegExp(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$').hasMatch(mac)) {
+    if (_type == 'mag' && (mac.length != 17 || !mac.contains(':'))) {
       setState(() => _error = 'Adresse MAC invalide (00:1A:79:XX:XX:XX)');
       return;
+    }
+    final p = Profile(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
