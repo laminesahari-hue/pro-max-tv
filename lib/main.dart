@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:media_kit/media_kit.dart';
 import 'core/profile.dart';
@@ -102,15 +104,42 @@ class _AppState extends State<App> {
               ? ProfileFormScreen(first: true, onSave: _add)
               : Shell(key: ValueKey(_profile!.id));
 
-          return MaterialApp(
+                    return MaterialApp(
             title: 'TV MAX PRO',
             debugShowCheckedModeBanner: false,
+            shortcuts: <ShortcutActivator, Intent>{
+              ...WidgetsApp.defaultShortcuts,
+              const SingleActivator(LogicalKeyboardKey.select):
+                  const ActivateIntent(),
+              const SingleActivator(LogicalKeyboardKey.enter):
+                  const ActivateIntent(),
+              const SingleActivator(LogicalKeyboardKey.numpadEnter):
+                  const ActivateIntent(),
+              const SingleActivator(LogicalKeyboardKey.gameButtonA):
+                  const ActivateIntent(),
+            },
             theme: ThemeData(
               useMaterial3: true,
               brightness: Brightness.dark,
               colorSchemeSeed: accent,
               scaffoldBackgroundColor: const Color(0xFF0B0D12),
+              focusColor: const Color(0xFF69F028).withValues(alpha: 0.38),
+              hoverColor: const Color(0xFF69F028).withValues(alpha: 0.25),
+              highlightColor: const Color(0xFF69F028).withValues(alpha: 0.30),
+              cardTheme: CardThemeData(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              listTileTheme: ListTileThemeData(
+                selectedTileColor:
+                    const Color(0xFF69F028).withValues(alpha: 0.22),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
             ),
+
             builder: (ctx, child) => _api == null
                 ? child!
                 : AppScope(
