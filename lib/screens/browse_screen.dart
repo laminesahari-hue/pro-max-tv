@@ -82,18 +82,21 @@ class _BrowsePageState extends State<BrowsePage> {
     return c;
   }
 
-  void _selectChannelForEpg(Item ch) {
+    void _selectChannelForEpg(Item ch) {
     if (_focusedChannel?.id == ch.id) return;
     setState(() {
-            _focusedEpg = _epgCache[ch.id.toString()] ?? const <Programme>[];
+      _focusedChannel = ch;
+      _focusedEpg = _epgCache[ch.id.toString()] ?? const <Programme>[];
     });
     if (_epgCache.containsKey(ch.id.toString())) return;
     app.epg.forChannel(ch, limit: 5).then((list) {
       _epgCache[ch.id.toString()] = list;
-
-      
+      if (mounted && _focusedChannel?.id == ch.id) {
+        setState(() => _focusedEpg = list);
+      }
     }).catchError((_) {});
   }
+
 
   String _hm(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
@@ -399,7 +402,7 @@ class _BrowsePageState extends State<BrowsePage> {
         final curProg =
             (cachedProgs != null && cachedProgs.isNotEmpty) ? cachedProgs.first : null;
 
-        return Padding(
+                return Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: InkWell(
             autofocus: i == 0,
@@ -412,74 +415,89 @@ class _BrowsePageState extends State<BrowsePage> {
               if (hovering) _selectChannelForEpg(it);
             },
             borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                  horizontal: 12, vertical: classic ? 8 : 11),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? accent.withValues(alpha: 0.14)
-                    : const Color(0xFF141824),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isSelected
-                      ? accent.withValues(alpha: 0.7)
-                      : Colors.white.withValues(alpha: 0.05),
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 34,
-                    child: Text(
-                      '${i + 1}',
-                      style: TextStyle(
-                        color: isSelected ? accent : Colors.white54,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
+            child: Builder(
+              builder: (ctx) {
+                final hasFocus = Focus.of(ctx).hasFocus;
+                final highlight = hasFocus || isSelected;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: 12, vertical: classic ? 8 : 11),
+                  decoration: BoxDecoration(
+                    color: hasFocus
+                        ? accent.withValues(alpha: 0.30)
+                        : (isSelected
+                            ? accent.withValues(alpha: 0.14)
+                            : const Color(0xFF141824)),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: hasFocus
+                          ? accent
+                          : (isSelected
+                              ? accent.withValues(alpha: 0.6)
+                              : Colors.white.withValues(alpha: 0.05)),
+                      width: hasFocus ? 2.5 : 1,
                     ),
                   ),
-                  _logo(it, size: classic ? 38 : 44),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          it.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 34,
+                        child: Text(
+                          '${i + 1}',
                           style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: classic ? 14 : 15,
+                            color: highlight ? accent : Colors.white54,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
-                        if (curProg != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            '${_hm(curProg.start)} · ${curProg.title}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: accent, fontSize: 12),
+                      ),
+                      _logo(it, size: classic ? 38 : 44),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              it.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: classic ? 14 : 15,
+                              ),
+                            ),
+                            if (curProg != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_hm(curProg.start)} · ${curProg.title}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: accent, fontSize: 12),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      ExcludeFocus(
+                        child: IconButton(
+                          icon: Icon(
+                            fav ? Icons.favorite : Icons.favorite_border,
+                            color: fav ? Colors.redAccent : Colors.white38,
+                            size: 20,
                           ),
-                        ],
-                      ],
-                    ),
+                          onPressed: () => app.store.toggleFav(it),
+                        ),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: Icon(
-                      fav ? Icons.favorite : Icons.favorite_border,
-                      color: fav ? Colors.redAccent : Colors.white38,
-                      size: 20,
-                    ),
-                    onPressed: () => app.store.toggleFav(it),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         );
+
       },
     );
   }
