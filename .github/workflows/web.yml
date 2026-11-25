@@ -33,7 +33,8 @@ jobs:
           sed -i 's|</head>|  <script src="assets/packages/media_kit/assets/web/hls1.4.10.js"></script>\n</head>|' web/index.html
       - run: flutter pub get
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
+
         with:
           path: build/web
       - id: deployment
