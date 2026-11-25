@@ -36,14 +36,14 @@ class _ProMaxAppState extends State<ProMaxApp> {
   @override
   void initState() {
     super.initState();
-    final active = widget.store.activeProfile;
+    final active = widget.store.active;
     if (active != null) _bind(active);
   }
 
   void _bind(Profile p) {
     final api = buildSource(p);
-    final repo = CatalogRepository(api, widget.store);
-    final epg = EpgService(api, widget.store);
+    final repo = CatalogRepository(api, widget.store, p.id);
+    final epg = EpgService(widget.store, api);
     _profile = p;
     _api = api;
     _repo = repo;
@@ -56,13 +56,19 @@ class _ProMaxAppState extends State<ProMaxApp> {
   }
 
   Future<void> _add(Profile p) async {
-    await widget.store.addProfile(p);
+    final list = [...widget.store.profiles.where((x) => x.id != p.id), p];
+    await widget.store.saveProfiles(list);
     await _activate(p);
   }
 
   Future<void> _remove(Profile p) async {
-    await widget.store.removeProfile(p.id);
-    final next = widget.store.activeProfile;
+    final list = widget.store.profiles.where((x) => x.id != p.id).toList();
+    await widget.store.saveProfiles(list);
+    await widget.store.removeProfileData(p.id);
+    final next = widget.store.active;
+    if (next != null) {
+      await widget.store.setActive(next.id);
+    }
     if (mounted) {
       setState(() {
         if (next == null) {
@@ -110,6 +116,7 @@ class _ProMaxAppState extends State<ProMaxApp> {
         home: (_profile == null || _api == null || _repo == null || _epg == null)
             ? ProfileFormScreen(first: true, onSave: _add)
             : AppScope(
+                key: ValueKey(_profile!.id),
                 api: _api!,
                 repo: _repo!,
                 epg: _epg!,
