@@ -433,31 +433,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
     player.seek(clamped);
     _bumpControls();
   }
-  bool _onRawKey(KeyEvent event) {
+    bool _onRawKey(KeyEvent event) {
     if (!mounted) return false;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
     final key = event.logicalKey;
 
-    if (_panel || _chanList) {
-      if (key == LogicalKeyboardKey.escape ||
-          key == LogicalKeyboardKey.goBack ||
-          key == LogicalKeyboardKey.browserBack) {
+    if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.browserBack) {
+      if (_panel || _chanList) {
         setState(() {
           _panel = false;
           _chanList = false;
         });
+        _focus.requestFocus();
         return true;
       }
+      if (_show) {
+        _toggleControls(false);
+        return true;
+      }
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      return true;
+    }
+
+    if (_panel || _chanList) {
       return false;
     }
 
     if (_show) {
-      if (key == LogicalKeyboardKey.escape ||
-          key == LogicalKeyboardKey.goBack ||
-          key == LogicalKeyboardKey.browserBack) {
-        _toggleControls(false);
-        return true;
-      }
       _bumpControls();
       return false;
     }
@@ -465,9 +471,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
-        key == LogicalKeyboardKey.gameButtonA ||
-        key == LogicalKeyboardKey.space) {
-      _toggleControls(true);
+        key == LogicalKeyboardKey.gameButtonA) {
+      if (_live) {
+        setState(() => _chanList = true);
+      } else {
+        _toggleControls(true);
+      }
       return true;
     }
 
@@ -511,35 +520,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return true;
     }
 
-    final digits = <LogicalKeyboardKey, String>{
-      LogicalKeyboardKey.digit0: '0',
-      LogicalKeyboardKey.numpad0: '0',
-      LogicalKeyboardKey.digit1: '1',
-      LogicalKeyboardKey.numpad1: '1',
-      LogicalKeyboardKey.digit2: '2',
-      LogicalKeyboardKey.numpad2: '2',
-      LogicalKeyboardKey.digit3: '3',
-      LogicalKeyboardKey.numpad3: '3',
-      LogicalKeyboardKey.digit4: '4',
-      LogicalKeyboardKey.numpad4: '4',
-      LogicalKeyboardKey.digit5: '5',
-      LogicalKeyboardKey.numpad5: '5',
-      LogicalKeyboardKey.digit6: '6',
-      LogicalKeyboardKey.numpad6: '6',
-      LogicalKeyboardKey.digit7: '7',
-      LogicalKeyboardKey.numpad7: '7',
-      LogicalKeyboardKey.digit8: '8',
-      LogicalKeyboardKey.numpad8: '8',
-      LogicalKeyboardKey.digit9: '9',
-      LogicalKeyboardKey.numpad9: '9',
-    };
-    if (digits.containsKey(key)) {
-      _onDigit(digits[key]!);
-      return true;
-    }
-
     return false;
   }
+
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     
@@ -698,9 +681,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                   
                 
+    @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_panel && !_chanList && !_show,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_panel || _chanList) {
@@ -711,8 +695,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _focus.requestFocus();
         } else if (_show) {
           _toggleControls(false);
+        } else if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
         }
       },
+
       child: Scaffold(
         backgroundColor: Colors.black,
                 body: Shortcuts(
@@ -1129,81 +1116,91 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-    Widget _buildChannelDrawer() {
+      Widget _buildChannelDrawer() {
     final filtered = _selectedCat == 'all'
         ? _allChannels
         : _allChannels.where((c) => c.cat == _selectedCat).toList();
+    final hasActiveInFiltered =
+        filtered.any((ch) => _allChannels.indexWhere((x) => x.id == ch.id) == _idx);
+
     return Material(
       color: const Color(0xEE101216),
-      child: Column(
-        children: <Widget>[
-          if (_cats.isNotEmpty)
-            SizedBox(
-              height: 48,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                itemCount: _cats.length,
-                itemBuilder: (context, i) {
-                  final cat = _cats[i];
-                  final sel = cat.id == _selectedCat;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(cat.name),
-                      selected: sel,
-                      selectedColor: _kNeon,
-                      labelStyle: TextStyle(
-                        color: sel ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.w600,
+      child: FocusTraversalGroup(
+        child: Column(
+          children: <Widget>[
+            if (_cats.isNotEmpty)
+              SizedBox(
+                height: 48,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  itemCount: _cats.length,
+                  itemBuilder: (context, i) {
+                    final cat = _cats[i];
+                    final sel = cat.id == _selectedCat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(cat.name),
+                        selected: sel,
+                        selectedColor: _kNeon,
+                        labelStyle: TextStyle(
+                          color: sel ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        backgroundColor: Colors.white10,
+                        onSelected: (_) => setState(() => _selectedCat = cat.id),
                       ),
-                      backgroundColor: Colors.white10,
-                      onSelected: (_) => setState(() => _selectedCat = cat.id),
+                    );
+                  },
+                ),
+              ),
+            const Divider(height: 1, color: Colors.white12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: filtered.length,
+                itemBuilder: (context, i) {
+                  final ch = filtered[i];
+                  final globalIdx =
+                      _allChannels.indexWhere((x) => x.id == ch.id);
+                  final active = globalIdx == _idx;
+                  final shouldAutofocus = active || (!hasActiveInFiltered && i == 0);
+
+                  return ListTile(
+                    autofocus: shouldAutofocus,
+                    focusColor: _kNeon.withValues(alpha: 0.35),
+                    hoverColor: _kNeon.withValues(alpha: 0.25),
+                    selected: active,
+                    selectedTileColor: _kNeon.withValues(alpha: 0.18),
+                    leading: Text(
+                      '${globalIdx + 1}',
+                      style: TextStyle(
+                        color: active ? _kNeon : Colors.white54,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                    title: Text(
+                      ch.name,
+                      style: TextStyle(
+                        color: active ? _kNeon : Colors.white,
+                        fontWeight:
+                            active ? FontWeight.bold : FontWeight.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => _jumpToIndex(globalIdx),
                   );
                 },
               ),
             ),
-          const Divider(height: 1, color: Colors.white12),
-          Expanded(
-            child: ListView.builder(
-              itemCount: filtered.length,
-              itemBuilder: (context, i) {
-                final ch = filtered[i];
-                final globalIdx =
-                    _allChannels.indexWhere((x) => x.id == ch.id);
-                final active = globalIdx == _idx;
-                return ListTile(
-                  autofocus: active,
-                  selected: active,
-                  selectedTileColor: _kNeon.withValues(alpha: 0.18),
-                  leading: Text(
-                    '${globalIdx + 1}',
-                    style: TextStyle(
-                      color: active ? _kNeon : Colors.white54,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  title: Text(
-                    ch.name,
-                    style: TextStyle(
-                      color: active ? _kNeon : Colors.white,
-                      fontWeight:
-                          active ? FontWeight.bold : FontWeight.normal,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () => _jumpToIndex(globalIdx),
-                );
-              },
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
 
   Widget _buildTracksPanel() {
     final audios = player.state.tracks.audio
