@@ -1116,21 +1116,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-      Widget _buildChannelDrawer() {
+        Widget _buildChannelDrawer() {
     final filtered = _selectedCat == 'all'
         ? _allChannels
         : _allChannels.where((c) => c.cat == _selectedCat).toList();
-    final hasActiveInFiltered =
-        filtered.any((ch) => _allChannels.indexWhere((x) => x.id == ch.id) == _idx);
+    final hasActiveInFiltered = filtered
+        .any((ch) => _allChannels.indexWhere((x) => x.id == ch.id) == _idx);
 
     return Material(
-      color: const Color(0xEE101216),
-      child: FocusTraversalGroup(
+      color: const Color(0xF2101216),
+      child: FocusScope(
+        autofocus: true,
         child: Column(
           children: <Widget>[
             if (_cats.isNotEmpty)
               SizedBox(
-                height: 48,
+                height: 52,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding:
@@ -1141,22 +1142,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     final sel = cat.id == _selectedCat;
                     return Padding(
                       padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(cat.name),
-                        selected: sel,
-                        selectedColor: _kNeon,
-                        labelStyle: TextStyle(
-                          color: sel ? Colors.black : Colors.white,
-                          fontWeight: FontWeight.w600,
+                      child: Focus(
+                        child: Builder(
+                          builder: (ctx) {
+                            final focused = Focus.of(ctx).hasFocus;
+                            return ChoiceChip(
+                              label: Text(cat.name),
+                              selected: sel,
+                              selectedColor: _kNeon,
+                              side: focused
+                                  ? const BorderSide(
+                                      color: Colors.white, width: 2.5)
+                                  : BorderSide.none,
+                              labelStyle: TextStyle(
+                                color: sel ? Colors.black : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              backgroundColor: Colors.white12,
+                              onSelected: (_) =>
+                                  setState(() => _selectedCat = cat.id),
+                            );
+                          },
                         ),
-                        backgroundColor: Colors.white10,
-                        onSelected: (_) => setState(() => _selectedCat = cat.id),
                       ),
                     );
                   },
                 ),
               ),
-            const Divider(height: 1, color: Colors.white12),
+            const Divider(height: 1, color: Colors.white24),
             Expanded(
               child: ListView.builder(
                 itemCount: filtered.length,
@@ -1165,32 +1178,79 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   final globalIdx =
                       _allChannels.indexWhere((x) => x.id == ch.id);
                   final active = globalIdx == _idx;
-                  final shouldAutofocus = active || (!hasActiveInFiltered && i == 0);
+                  final shouldAutofocus =
+                      active || (!hasActiveInFiltered && i == 0);
 
-                  return ListTile(
-                    autofocus: shouldAutofocus,
-                    focusColor: _kNeon.withValues(alpha: 0.35),
-                    hoverColor: _kNeon.withValues(alpha: 0.25),
-                    selected: active,
-                    selectedTileColor: _kNeon.withValues(alpha: 0.18),
-                    leading: Text(
-                      '${globalIdx + 1}',
-                      style: TextStyle(
-                        color: active ? _kNeon : Colors.white54,
-                        fontWeight: FontWeight.bold,
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    child: InkWell(
+                      autofocus: shouldAutofocus,
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _jumpToIndex(globalIdx),
+                      child: Builder(
+                        builder: (ctx) {
+                          final focused = Focus.of(ctx).hasFocus;
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: focused
+                                  ? _kNeon.withValues(alpha: 0.30)
+                                  : (active
+                                      ? _kNeon.withValues(alpha: 0.14)
+                                      : Colors.transparent),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: focused
+                                    ? _kNeon
+                                    : (active
+                                        ? _kNeon.withValues(alpha: 0.4)
+                                        : Colors.transparent),
+                                width: focused ? 2.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 36,
+                                  child: Text(
+                                    '${globalIdx + 1}',
+                                    style: TextStyle(
+                                      color: (focused || active)
+                                          ? _kNeon
+                                          : Colors.white54,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    ch.name,
+                                    style: TextStyle(
+                                      color: focused
+                                          ? Colors.white
+                                          : (active ? _kNeon : Colors.white70),
+                                      fontWeight: (focused || active)
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                      fontSize: 15,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (active)
+                                  const Icon(Icons.play_arrow_rounded,
+                                      color: _kNeon, size: 20),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
-                    title: Text(
-                      ch.name,
-                      style: TextStyle(
-                        color: active ? _kNeon : Colors.white,
-                        fontWeight:
-                            active ? FontWeight.bold : FontWeight.normal,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () => _jumpToIndex(globalIdx),
                   );
                 },
               ),
@@ -1200,6 +1260,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+
 
 
   Widget _buildTracksPanel() {
