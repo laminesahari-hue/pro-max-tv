@@ -84,7 +84,8 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
-        final vod = snap.data!, ser = snap.data!, live = snap.data!;
+        final vod = snap.data![0], ser = snap.data![1], live = snap.data![2];
+
         final fewMovies = _fewRecent(vod, 8);
         final fewSeries = _fewRecent(ser, 8);
 
