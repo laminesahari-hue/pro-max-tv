@@ -1,4 +1,4 @@
-name: Build Pro Max TV APK
+name: Build TV Max Pro APK
 on:
   push:
     branches: [main]
@@ -18,17 +18,29 @@ jobs:
           channel: stable
           cache: true
       - name: Générer le dossier Android
-        run: flutter create --platforms=android --org com.promaxtv --project-name promax_tv .
-      - name: Nom, Internet, HTTP en clair, Google TV
+        run: flutter create --platforms=android --org com.tvmaxpro --project-name tvmax_pro .
+      - name: Ajouter la bannière et l'icône Android TV
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+          if [ -f "assets/banner.png" ]; then
+            cp assets/banner.png android/app/src/main/res/drawable/banner.png
+          else
+            python3 -c "import zlib, struct; w,h=320,180; raw=b'\x00'+b'\x1a\x1a\x2e'*w; data=zlib.compress(raw*h); png=b'\x89PNG\r\n\x1a\n'+struct.pack('>I4sIIBBBBB',13,b'IHDR',w,h,8,2,0,0,0)+struct.pack('>I',zlib.crc32(b'IHDR'+struct.pack('>IIBBBBB',w,h,8,2,0,0,0)))+struct.pack('>I4s',len(data),b'IDAT')+data+struct.pack('>I',zlib.crc32(b'IDAT'+data))+struct.pack('>I4sI',0,b'IEND',zlib.crc32(b'IEND')); open('android/app/src/main/res/drawable/banner.png','wb').write(png)"
+          fi
+          if [ -f "assets/icon.png" ]; then
+            cp assets/icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          fi
+      - name: Nom, Internet, HTTP en clair, Google TV et Désactivation Impeller
         run: |
           M=android/app/src/main/AndroidManifest.xml
-          sed -i 's|android:label="[^"]*"|android:label="Pro Max TV"|' $M
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>\n    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <application android:usesCleartextTraffic="true"|' $M
+          sed -i 's|android:label="[^"]*"|android:label="TV Max Pro"|' $M
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>\n    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <application android:usesCleartextTraffic="true" android:banner="@drawable/banner"|' $M
           sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|&\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' $M
+          sed -i 's|</application>|    <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false"/>\n    </application>|' $M
       - run: flutter pub get
       - name: Build APK léger (un fichier par architecture)
         run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/symbols
       - uses: actions/upload-artifact@v4
         with:
-          name: promax-tv-apk
+          name: tvmax-pro-apk
           path: build/app/outputs/flutter-apk/app-*-release.apk
