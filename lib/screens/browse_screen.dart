@@ -42,13 +42,20 @@ class _BrowsePageState extends State<BrowsePage> {
     Kind.series: 'Séries',
   };
 
+  
+    bool _initialized = false;
+
   @override
-  void initState() {
-    super.initState();
-    app = AppScope.of(context);
-    _classicDecoderMode = app.store.get<bool>('live_classic_mode', true);
-    _f = _load();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      app = AppScope.of(context);
+      _classicDecoderMode = app.store.get<bool>('live_classic_mode', true);
+      _f = _load();
+    }
   }
+
 
   Future<_Data> _load({bool refresh = false}) async {
     final cats = await app.repo.categories(widget.kind, refresh: refresh);
