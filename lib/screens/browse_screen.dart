@@ -30,7 +30,6 @@ class _BrowsePageState extends State<BrowsePage> {
   String? _ck;
   List<Item>? _cl;
 
-  // Mode Live TV : true = Classique (3 colonnes style décodeur avec EPG), false = Normal
   bool _classicDecoderMode = true;
   Item? _focusedChannel;
   List<Programme> _focusedEpg = const <Programme>[];
@@ -126,7 +125,6 @@ class _BrowsePageState extends State<BrowsePage> {
               ),
       );
 
-  // --- COLONNE GAUCHE : DOSSIERS / CATÉGORIES ---
   Widget _buildLeftCategories(_Data d, Color accent, {bool compact = false}) {
     final favCount = app.store.favorites(kind: widget.kind).length;
     return Container(
@@ -226,8 +224,6 @@ class _BrowsePageState extends State<BrowsePage> {
       ),
     );
   }
-
-  // --- COLONNE DROITE (MODE CLASSIQUE DÉCODEUR) : FICHE EPG DE LA CHAÎNE ---
   Widget _buildDecoderEpgPanel(List<Item> list, Color accent) {
     final ch = _focusedChannel ?? (list.isNotEmpty ? list.first : null);
     if (ch == null) return const SizedBox.shrink();
@@ -289,3 +285,205 @@ class _BrowsePageState extends State<BrowsePage> {
                 foregroundColor: Colors.black,
               ),
               onPressed: () => openItem(context, ch, channels: list),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Regarder en direct',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const Divider(height: 28, color: Colors.white12),
+          Text(
+            'EN CE MOMENT',
+            style: TextStyle(
+              color: accent,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (nowProg == null)
+            const Text(
+              'Aucune information EPG disponible pour cette chaîne.',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            )
+          else ...[
+            Text(
+              nowProg.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${_hm(nowProg.start)} - ${_hm(nowProg.end)}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 5,
+                backgroundColor: Colors.white12,
+                valueColor: AlwaysStoppedAnimation<Color>(accent),
+              ),
+            ),
+          ],
+          if (nextProgs.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Text(
+              'À SUIVRE',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.separated(
+                itemCount: nextProgs.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(color: Colors.white10),
+                itemBuilder: (_, idx) {
+                  final p = nextProgs[idx];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_hm(p.start)} - ${_hm(p.end)}',
+                          style: TextStyle(
+                              color: accent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          p.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveChannelList(List<Item> list, Color accent,
+      {required bool classic}) {
+    if (list.isEmpty) {
+      return const Center(child: Text('Aucune chaîne dans ce dossier'));
+    }
+    if (_focusedChannel == null ||
+        !list.any((x) => x.id == _focusedChannel!.id)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _selectChannelForEpg(list.first);
+      });
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      itemCount: list.length,
+      itemBuilder: (_, i) {
+        final it = list[i];
+        final fav = app.store.isFav(it);
+        final isSelected = _focusedChannel?.id == it.id;
+        final cachedProgs = _epgCache[it.id.toString()];
+        final curProg = (cachedProgs != null && cachedProgs.isNotEmpty)
+            ? cachedProgs.first
+            : null;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: InkWell(
+            autofocus: i == 0,
+            onTap: () => openItem(context, it, channels: list),
+            onLongPress: () => app.store.toggleFav(it),
+            onFocusChange: (hasFocus) {
+              if (hasFocus) _selectChannelForEpg(it);
+            },
+            onHover: (hovering) {
+              if (hovering) _selectChannelForEpg(it);
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Builder(
+              builder: (ctx) {
+                final hasFocus = Focus.of(ctx).hasFocus;
+                final highlight = hasFocus || isSelected;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: 12, vertical: classic ? 8 : 11),
+                  decoration: BoxDecoration(
+                    color: hasFocus
+                        ? accent.withValues(alpha: 0.30)
+                        : (isSelected
+                            ? accent.withValues(alpha: 0.14)
+                            : const Color(0xFF141824)),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: hasFocus
+                          ? accent
+                          : (isSelected
+                              ? accent.withValues(alpha: 0.6)
+                              : Colors.white.withValues(alpha: 0.05)),
+                      width: hasFocus ? 2.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 34,
+                        child: Text(
+                          '${i + 1}',
+                          style: TextStyle(
+                            color: highlight ? accent : Colors.white54,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      _logo(it, size: classic ? 38 : 44),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              it.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: classic ? 14 : 15,
+                              ),
+                            ),
+                            if (curProg != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_hm(curProg.start)} · ${curProg.title}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: accent, fontSize: 12),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      ExcludeFocus(
+                        child: IconButton(
+                          icon: Icon(
