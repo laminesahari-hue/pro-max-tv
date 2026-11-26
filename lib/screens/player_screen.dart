@@ -131,16 +131,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
         bufferSize: sizes.elementAt(bufIdx) * 1024 * 1024,
       ),
     );
-    controller = VideoController(
+       controller = VideoController(
       player,
       configuration: VideoControllerConfiguration(
         enableHardwareAcceleration: st.get<bool>('hwdec', true),
+        androidAttachSurfaceAfterVideoParameters: false,
       ),
     );
 
     if (!kIsWeb) {
       try {
         final dynamic dyn = player.platform;
+        // Décodage hybride sécurisé pour puces Android TV (évite l'écran blanc/gris)
+        dyn.setProperty(
+          'hwdec',
+          st.get<bool>('hwdec', true) ? 'auto-safe' : 'no',
+        );
+        dyn.setProperty('hwdec-codecs', 'all');
         // Optimisation réseau & reconnexion rapide
         dyn.setProperty('reconnect', '1');
         dyn.setProperty('reconnect-streamed', '1');
@@ -149,7 +156,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         dyn.setProperty('tls-verify', 'no');
 
         if (_live) {
-          // Zapping instantané : démarrage dès les premières données reçues
           dyn.setProperty('cache', 'yes');
           dyn.setProperty('cache-pause', 'no');
           dyn.setProperty('demuxer-readahead-secs', '1.5');
@@ -163,6 +169,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       } catch (_) {}
     }
+ 
 
     _subs.addAll(<StreamSubscription>[
       player.stream.error.listen(_onError),
@@ -744,11 +751,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   fit: StackFit.expand,
                   children: <Widget>[
                     // Flux vidéo
-                    Video(
-                      controller: controller,
-                      fit: _fits[_fit],
-                      controls: NoVideoControls,
-                    ),
+                                    // Fond noir absolu
+                const ColoredBox(color: Colors.black),
+                // Flux vidéo (masqué tant que la 1re trame n'est pas décodée)
+                AnimatedOpacity(
+                  opacity: _started ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Video(
+                    controller: controller,
+                    fit: _fits[_fit],
+                    fill: Colors.black,
+                    controls: NoVideoControls,
+                  ),
+                ),
+
 
                     // Indicateur de chargement
                     if (_buffering && _error == null)
