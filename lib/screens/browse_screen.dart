@@ -528,48 +528,6 @@ class _BrowsePageState extends State<BrowsePage> {
     );
   }
 
-  // --- BARRE DE CATÉGORIES HORIZONTALE (Films / Séries) ---
-  Widget _buildCategoryChips(_Data d, Color accent) {
-    final ids = <String>['all', 'fav', ...d.cats.map((c) => c.id)];
-    String labelOf(String id) {
-      if (id == 'all') return 'Tous';
-      if (id == 'fav') return '★ Favoris';
-      return d.cats.firstWhere((c) => c.id == id).name;
-    }
-
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: ids.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final id = ids[i];
-          return ChoiceChip(
-            label: Text(labelOf(id)),
-            selected: _cat == id,
-            selectedColor: accent.withValues(alpha: 0.3),
-            onSelected: (_) => setState(() => _cat = id),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSortMenu() {
-    return PopupMenuButton<int>(
-      tooltip: 'Trier',
-      icon: const Icon(Icons.sort_rounded),
-      initialValue: _sort,
-      onSelected: (v) => setState(() => _sort = v),
-      itemBuilder: (_) => [
-        for (var i = 0; i < _sortLabels.length; i++)
-          PopupMenuItem(value: i, child: Text(_sortLabels[i])),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
@@ -583,8 +541,9 @@ class _BrowsePageState extends State<BrowsePage> {
         }
         if (snap.hasError) {
           return ErrorView(
-              message: '${snap.error}',
-              onRetry: () => setState(() => _f = _load(refresh: true)));
+            message: '${snap.error}',
+            onRetry: () => setState(() => _f = _load(refresh: true)),
+          );
         }
         final d = snap.data!;
         final list = _list(d);
@@ -598,7 +557,8 @@ class _BrowsePageState extends State<BrowsePage> {
                   color: const Color(0xFF0E1118),
                   border: Border(
                     bottom: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08)),
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
                   ),
                 ),
                 child: Row(
@@ -613,9 +573,10 @@ class _BrowsePageState extends State<BrowsePage> {
                     ),
                     const Spacer(),
                     if (isWide) ...[
-                      const Text('Classique',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)),
+                      const Text(
+                        'Classique',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
                       Switch(
                         value: _classicDecoderMode,
                         onChanged: (v) {
@@ -637,11 +598,17 @@ class _BrowsePageState extends State<BrowsePage> {
               Expanded(
                 child: Row(
                   children: [
-                    _buildLeftCategories(d, accent,
-                        compact: !isWide || !_classicDecoderMode),
+                    _buildLeftCategories(
+                      d,
+                      accent,
+                      compact: !isWide || !_classicDecoderMode,
+                    ),
                     Expanded(
-                      child: _buildLiveChannelList(list, accent,
-                          classic: _classicDecoderMode),
+                      child: _buildLiveChannelList(
+                        list,
+                        accent,
+                        classic: _classicDecoderMode,
+                      ),
                     ),
                     if (isWide && _classicDecoderMode)
                       _buildDecoderEpgPanel(list, accent),
