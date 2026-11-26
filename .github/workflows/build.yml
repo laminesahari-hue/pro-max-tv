@@ -19,21 +19,31 @@ jobs:
           cache: true
       - name: Générer le dossier Android
         run: flutter create --platforms=android --org com.tvmaxpro --project-name tvmax_pro .
-      - name: Convertir et ajouter la bannière et l'icône Android TV
+      - name: Préparer et convertir la bannière et l'icône
         run: |
           sudo apt-get update && sudo apt-get install -y imagemagick
-          mkdir -p android/app/src/main/res/drawable
-          if [ -f "assets/banner.png" ]; then
-            convert assets/banner.png -resize 320x180! PNG32:android/app/src/main/res/drawable/banner.png
+          mkdir -p assets android/app/src/main/res/drawable
+          
+          # Cherche banner n'importe où dans le projet
+          BANNER_SRC=$(find . -maxdepth 3 -iname "*banner*" -type f | head -n 1)
+          if [ -n "$BANNER_SRC" ]; then
+            convert "$BANNER_SRC" -resize 640x360! PNG32:assets/banner.png
           else
-            convert -size 320x180 xc:#050A0E PNG32:android/app/src/main/res/drawable/banner.png
+            convert -size 640x360 xc:#050A0E PNG32:assets/banner.png
           fi
-          if [ -f "assets/icon.png" ]; then
-            for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
-              mkdir -p android/app/src/main/res/$dir
-              convert assets/icon.png -resize 192x192! PNG32:android/app/src/main/res/$dir/ic_launcher.png
-            done
+          convert assets/banner.png -resize 320x180! PNG32:android/app/src/main/res/drawable/banner.png
+          
+          # Cherche icon n'importe où dans le projet
+          ICON_SRC=$(find . -maxdepth 3 -iname "*icon*" -type f | head -n 1)
+          if [ -n "$ICON_SRC" ]; then
+            convert "$ICON_SRC" -resize 512x512! PNG32:assets/icon.png
+          else
+            convert -size 512x512 xc:#050A0E PNG32:assets/icon.png
           fi
+          for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            mkdir -p android/app/src/main/res/$dir
+            convert assets/icon.png -resize 192x192! PNG32:android/app/src/main/res/$dir/ic_launcher.png
+          done
       - name: Nom, Internet, HTTP en clair, Google TV et Désactivation Impeller
         run: |
           M=android/app/src/main/AndroidManifest.xml
