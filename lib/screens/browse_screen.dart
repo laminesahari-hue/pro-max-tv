@@ -591,17 +591,81 @@ class _BrowsePageState extends State<BrowsePage> {
                         app.store.set('live_classic_mode', s.first);
                       },
                     ),
-                    const SizedBox(width: 8),
-                    PopupMenuButton<int>(
-                      icon: const Icon(Icons.sort, size: 20),
-                      tooltip: 'Trier',
-                      onSelected: (v) => setState(() => _sort = v),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                            value: 0, child: Text('Ordre du serveur')),
-                        PopupMenuItem(value: 1, child: Text('Plus récents')),
-                        PopupMenuItem(value: 2, child: Text('A → Z')),
-                      ],
+                            if (widget.kind == Kind.live) {
+          return Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0E1118),
+                  border: Border(
+                    bottom: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.08)),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      'Live TV',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SegmentedButton<bool>(
+                                style: ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  textStyle: WidgetStateProperty.all(
+                                      const TextStyle(fontSize: 12)),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                    value: true,
+                                    icon: Icon(Icons.view_column_rounded,
+                                        size: 16),
+                                    label: Text('Classique EPG'),
+                                  ),
+                                  ButtonSegment(
+                                    value: false,
+                                    icon: Icon(Icons.view_list_rounded,
+                                        size: 16),
+                                    label: Text('Normal'),
+                                  ),
+                                ],
+                                selected: {_classicDecoderMode},
+                                onSelectionChanged: (s) {
+                                  setState(
+                                      () => _classicDecoderMode = s.first);
+                                  app.store.set('live_classic_mode', s.first);
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              PopupMenuButton<int>(
+                                icon: const Icon(Icons.sort, size: 20),
+                                tooltip: 'Trier',
+                                onSelected: (v) => setState(() => _sort = v),
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                      value: 0,
+                                      child: Text('Ordre du serveur')),
+                                  PopupMenuItem(
+                                      value: 1, child: Text('Plus récents')),
+                                  PopupMenuItem(value: 2, child: Text('A → Z')),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -623,7 +687,10 @@ class _BrowsePageState extends State<BrowsePage> {
                           ),
                         ),
                         if (_classicDecoderMode && isWide)
-                          _buildDecoderEpgPanel(list, accent),
+                          SizedBox(
+                            width: 280,
+                            child: _buildDecoderEpgPanel(list, accent),
+                          ),
                       ],
                     );
                   },
@@ -632,6 +699,7 @@ class _BrowsePageState extends State<BrowsePage> {
             ],
           );
         }
+
 
         return Column(children: [
           Padding(
