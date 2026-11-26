@@ -131,23 +131,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         bufferSize: sizes.elementAt(bufIdx) * 1024 * 1024,
       ),
     );
-       controller = VideoController(
-      player,
-      configuration: VideoControllerConfiguration(
-        enableHardwareAcceleration: st.get<bool>('hwdec', true),
-        androidAttachSurfaceAfterVideoParameters: false,
-      ),
-    );
+        controller = VideoController(
+   player,
+   configuration: const VideoControllerConfiguration(
+     enableHardwareAcceleration: false,
+   ),
+ );
 
-    if (!kIsWeb) {
-      try {
-        final dynamic dyn = player.platform;
-        // Décodage hybride sécurisé pour puces Android TV (évite l'écran blanc/gris)
-        dyn.setProperty(
-          'hwdec',
-          st.get<bool>('hwdec', true) ? 'auto-safe' : 'no',
-        );
-        dyn.setProperty('hwdec-codecs', 'all');
+ if (!kIsWeb) {
+   try {
+     final dynamic dyn = player.platform;
+     // Décodage logiciel FFmpeg (corrige l'écran gris/rayé sur Android TV)
+     dyn.setProperty('hwdec', 'no');
+
         // Optimisation réseau & reconnexion rapide
         dyn.setProperty('reconnect', '1');
         dyn.setProperty('reconnect-streamed', '1');
