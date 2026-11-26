@@ -25,18 +25,23 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   static bool _auto = false;
   late String _sel;
+  bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    final app = AppScope.of(context);
-    final start = app.store.get<String>('start_tab', 'home');
-    _sel = start == 'home' ? 'Accueil' : 'TV Live';
-    if (start == 'last' && !_auto) {
-      _auto = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _resumeLast(app));
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      final app = AppScope.of(context);
+      final start = app.store.get<String>('start_tab', 'home');
+      _sel = start == 'home' ? 'Accueil' : 'TV Live';
+      if (start == 'last' && !_auto) {
+        _auto = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _resumeLast(app));
+      }
     }
   }
+
 
   Future<void> _resumeLast(AppScope app) async {
     final recents = app.store.recentLive();
