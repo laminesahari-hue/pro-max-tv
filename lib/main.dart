@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -32,12 +33,19 @@ class _ProMaxAppState extends State<ProMaxApp> {
   Source? _api;
   CatalogRepository? _repo;
   EpgService? _epg;
+  bool _showSplash = true;
 
   @override
   void initState() {
     super.initState();
     final active = widget.store.active;
     if (active != null) _bind(active);
+
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() => _showSplash = false);
+      }
+    });
   }
 
   void _bind(Profile p) {
@@ -98,7 +106,7 @@ class _ProMaxAppState extends State<ProMaxApp> {
             const ActivateIntent(),
       },
       child: MaterialApp(
-        title: 'Pro Max TV',
+        title: 'TV Max Pro',
         debugShowCheckedModeBanner: false,
         themeMode: ThemeMode.dark,
         darkTheme: ThemeData(
@@ -113,20 +121,34 @@ class _ProMaxAppState extends State<ProMaxApp> {
           focusColor: neonGreen.withOpacity(0.28),
           hoverColor: neonGreen.withOpacity(0.14),
         ),
-        home: (_profile == null || _api == null || _repo == null || _epg == null)
-            ? ProfileFormScreen(first: true, onSave: _add)
-            : AppScope(
-                key: ValueKey(_profile!.id),
-                api: _api!,
-                repo: _repo!,
-                epg: _epg!,
-                store: widget.store,
-                profile: _profile!,
-                onActivate: _activate,
-                onAdd: _add,
-                onRemove: _remove,
-                child: const Shell(),
-              ),
+        home: _showSplash
+            ? Scaffold(
+                backgroundColor: const Color(0xFF050A0E),
+                body: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Image.asset(
+                      'assets/banner.png',
+                      width: 520,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              )
+            : (_profile == null || _api == null || _repo == null || _epg == null)
+                ? ProfileFormScreen(first: true, onSave: _add)
+                : AppScope(
+                    key: ValueKey(_profile!.id),
+                    api: _api!,
+                    repo: _repo!,
+                    epg: _epg!,
+                    store: widget.store,
+                    profile: _profile!,
+                    onActivate: _activate,
+                    onAdd: _add,
+                    onRemove: _remove,
+                    child: const Shell(),
+                  ),
       ),
     );
   }
