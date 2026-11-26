@@ -486,7 +486,7 @@ class _BrowsePageState extends State<BrowsePage> {
                       ),
                       ExcludeFocus(
                         child: IconButton(
-                          icon: Icon(
+                          
                           icon: Icon(
                             fav ? Icons.favorite : Icons.favorite_border,
                             color: fav ? Colors.redAccent : Colors.white38,
