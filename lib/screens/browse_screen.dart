@@ -42,8 +42,9 @@ class _BrowsePageState extends State<BrowsePage> {
     Kind.series: 'Séries',
   };
 
-  
-    bool _initialized = false;
+  static const _sortLabels = ['Par défaut', 'Récents', 'A → Z', 'Mieux notés'];
+
+  bool _initialized = false;
 
   @override
   void didChangeDependencies() {
@@ -56,7 +57,6 @@ class _BrowsePageState extends State<BrowsePage> {
     }
   }
 
-
   Future<_Data> _load({bool refresh = false}) async {
     final cats = await app.repo.categories(widget.kind, refresh: refresh);
     final items = await app.repo.items(widget.kind, refresh: refresh);
@@ -64,6 +64,9 @@ class _BrowsePageState extends State<BrowsePage> {
     for (final i in items) {
       by.putIfAbsent(i.cat, () => []).add(i);
     }
+    // Invalide le cache de liste après un chargement
+    _ck = null;
+    _cl = null;
     return _Data(cats.where((c) => by.containsKey(c.id)).toList(), items, by);
   }
 
@@ -79,17 +82,20 @@ class _BrowsePageState extends State<BrowsePage> {
     switch (_sort) {
       case 1:
         c.sort((a, b) => b.added.compareTo(a.added));
+        break;
       case 2:
         c.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
       case 3:
         c.sort((a, b) => b.rating5.compareTo(a.rating5));
+        break;
     }
     _ck = key;
     _cl = c;
     return c;
   }
 
-    void _selectChannelForEpg(Item ch) {
+  void _selectChannelForEpg(Item ch) {
     if (_focusedChannel?.id == ch.id) return;
     setState(() {
       _focusedChannel = ch;
@@ -103,7 +109,6 @@ class _BrowsePageState extends State<BrowsePage> {
       }
     }).catchError((_) {});
   }
-
 
   String _hm(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
@@ -228,8 +233,9 @@ class _BrowsePageState extends State<BrowsePage> {
     final ch = _focusedChannel ?? (list.isNotEmpty ? list.first : null);
     if (ch == null) return const SizedBox.shrink();
     final nowProg = _focusedEpg.isNotEmpty ? _focusedEpg.first : null;
-    final nextProgs =
-        _focusedEpg.length > 1 ? _focusedEpg.skip(1).toList() : const <Programme>[];
+    final nextProgs = _focusedEpg.length > 1
+        ? _focusedEpg.skip(1).toList()
+        : const <Programme>[];
 
     double progress = 0.0;
     if (nowProg != null) {
@@ -262,26 +268,20 @@ class _BrowsePageState extends State<BrowsePage> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ch.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                                          ],
-                    ),
+                child: Text(
+                  ch.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
+                ),
               ),
-
-                              const SizedBox(height: 16),
+            ],
+          ),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -351,7 +351,8 @@ class _BrowsePageState extends State<BrowsePage> {
             Expanded(
               child: ListView.separated(
                 itemCount: nextProgs.length,
-                separatorBuilder: (_, __) => const Divider(color: Colors.white10),
+                separatorBuilder: (_, __) =>
+                    const Divider(color: Colors.white10),
                 itemBuilder: (_, idx) {
                   final p = nextProgs[idx];
                   return Padding(
@@ -391,7 +392,8 @@ class _BrowsePageState extends State<BrowsePage> {
     if (list.isEmpty) {
       return const Center(child: Text('Aucune chaîne dans ce dossier'));
     }
-    if (_focusedChannel == null || !list.any((x) => x.id == _focusedChannel!.id)) {
+    if (_focusedChannel == null ||
+        !list.any((x) => x.id == _focusedChannel!.id)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _selectChannelForEpg(list.first);
       });
@@ -404,12 +406,12 @@ class _BrowsePageState extends State<BrowsePage> {
         final it = list[i];
         final fav = app.store.isFav(it);
         final isSelected = _focusedChannel?.id == it.id;
-                final cachedProgs = _epgCache[it.id.toString()];
+        final cachedProgs = _epgCache[it.id.toString()];
+        final curProg = (cachedProgs != null && cachedProgs.isNotEmpty)
+            ? cachedProgs.first
+            : null;
 
-        final curProg =
-            (cachedProgs != null && cachedProgs.isNotEmpty) ? cachedProgs.first : null;
-
-                return Padding(
+        return Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: InkWell(
             autofocus: i == 0,
@@ -494,7 +496,7 @@ class _BrowsePageState extends State<BrowsePage> {
                             color: fav ? Colors.redAccent : Colors.white38,
                             size: 20,
                           ),
-                          onPressed: () => app.store.toggleFav(it),
+                          onPressed: () => setState(() => app.store.toggleFav(it)),
                         ),
                       ),
                     ],
@@ -504,7 +506,6 @@ class _BrowsePageState extends State<BrowsePage> {
             ),
           ),
         );
-
       },
     );
   }
@@ -527,6 +528,48 @@ class _BrowsePageState extends State<BrowsePage> {
     );
   }
 
+  // --- BARRE DE CATÉGORIES HORIZONTALE (Films / Séries) ---
+  Widget _buildCategoryChips(_Data d, Color accent) {
+    final ids = <String>['all', 'fav', ...d.cats.map((c) => c.id)];
+    String labelOf(String id) {
+      if (id == 'all') return 'Tous';
+      if (id == 'fav') return '★ Favoris';
+      return d.cats.firstWhere((c) => c.id == id).name;
+    }
+
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        itemCount: ids.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final id = ids[i];
+          return ChoiceChip(
+            label: Text(labelOf(id)),
+            selected: _cat == id,
+            selectedColor: accent.withValues(alpha: 0.3),
+            onSelected: (_) => setState(() => _cat = id),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSortMenu() {
+    return PopupMenuButton<int>(
+      tooltip: 'Trier',
+      icon: const Icon(Icons.sort_rounded),
+      initialValue: _sort,
+      onSelected: (v) => setState(() => _sort = v),
+      itemBuilder: (_) => [
+        for (var i = 0; i < _sortLabels.length; i++)
+          PopupMenuItem(value: i, child: Text(_sortLabels[i])),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
@@ -544,6 +587,7 @@ class _BrowsePageState extends State<BrowsePage> {
               onRetry: () => setState(() => _f = _load(refresh: true)));
         }
         final d = snap.data!;
+        final list = _list(d);
 
         if (widget.kind == Kind.live) {
           return Column(
@@ -560,204 +604,71 @@ class _BrowsePageState extends State<BrowsePage> {
                 child: Row(
                   children: [
                     Text(
-                      'Live TV',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      _titles[widget.kind]!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const Spacer(),
-                                        SegmentedButton<bool>(
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        textStyle: WidgetStateProperty.all(
-                            const TextStyle(fontSize: 12)),
+                    if (isWide) ...[
+                      const Text('Classique',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 12)),
+                      Switch(
+                        value: _classicDecoderMode,
+                        onChanged: (v) {
+                          setState(() => _classicDecoderMode = v);
+                          app.store.put('live_classic_mode', v);
+                        },
                       ),
-                      segments: const [
-                        ButtonSegment(
-                          value: true,
-                          icon: Icon(Icons.view_column_rounded, size: 16),
-                          label: Text('Classique EPG'),
-                        ),
-                        ButtonSegment(
-                          value: false,
-                          icon: Icon(Icons.view_list_rounded, size: 16),
-                          label: Text('Normal'),
-                        ),
-                      ],
-                      selected: {_classicDecoderMode},
-                      onSelectionChanged: (s) {
-                        setState(() => _classicDecoderMode = s.first);
-                        app.store.set('live_classic_mode', s.first);
-                      },
-                    ),
-                            if (widget.kind == Kind.live) {
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0E1118),
-                  border: Border(
-                    bottom: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08)),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      'Live TV',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SegmentedButton<bool>(
-                                style: ButtonStyle(
-                                  visualDensity: VisualDensity.compact,
-                                  textStyle: WidgetStateProperty.all(
-                                      const TextStyle(fontSize: 12)),
-                                ),
-                                segments: const [
-                                  ButtonSegment(
-                                    value: true,
-                                    icon: Icon(Icons.view_column_rounded,
-                                        size: 16),
-                                    label: Text('Classique EPG'),
-                                  ),
-                                  ButtonSegment(
-                                    value: false,
-                                    icon: Icon(Icons.view_list_rounded,
-                                        size: 16),
-                                    label: Text('Normal'),
-                                  ),
-                                ],
-                                selected: {_classicDecoderMode},
-                                onSelectionChanged: (s) {
-                                  setState(
-                                      () => _classicDecoderMode = s.first);
-                                  app.store.set('live_classic_mode', s.first);
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                              PopupMenuButton<int>(
-                                icon: const Icon(Icons.sort, size: 20),
-                                tooltip: 'Trier',
-                                onSelected: (v) => setState(() => _sort = v),
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                      value: 0,
-                                      child: Text('Ordre du serveur')),
-                                  PopupMenuItem(
-                                      value: 1, child: Text('Plus récents')),
-                                  PopupMenuItem(value: 2, child: Text('A → Z')),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    ],
+                    _buildSortMenu(),
+                    IconButton(
+                      tooltip: 'Actualiser',
+                      icon: const Icon(Icons.refresh_rounded),
+                      onPressed: () =>
+                          setState(() => _f = _load(refresh: true)),
                     ),
                   ],
                 ),
               ),
               Expanded(
-                child: ValueListenableBuilder(
-                  valueListenable: app.store.user.listenable(),
-                  builder: (_, __, ___) {
-                    final list = _list(d);
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildLeftCategories(d, accent, compact: !isWide),
-                        Expanded(
-                          child: _buildLiveChannelList(
-                            list,
-                            accent,
-                            classic: _classicDecoderMode,
-                          ),
-                        ),
-                        if (_classicDecoderMode && isWide)
-                          SizedBox(
-                            width: 280,
-                            child: _buildDecoderEpgPanel(list, accent),
-                          ),
-                      ],
-                    );
-                  },
+                child: Row(
+                  children: [
+                    _buildLeftCategories(d, accent,
+                        compact: !isWide || !_classicDecoderMode),
+                    Expanded(
+                      child: _buildLiveChannelList(list, accent,
+                          classic: _classicDecoderMode),
+                    ),
+                    if (isWide && _classicDecoderMode)
+                      _buildDecoderEpgPanel(list, accent),
+                  ],
                 ),
               ),
             ],
           );
         }
 
-
-        return Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-            child: Row(children: [
-              Text(_titles[widget.kind]!,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold)),
-              const Spacer(),
-              PopupMenuButton<int>(
-                icon: const Icon(Icons.sort),
-                tooltip: 'Trier',
-                onSelected: (v) => setState(() => _sort = v),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 0, child: Text('Ordre du serveur')),
-                  PopupMenuItem(value: 1, child: Text('Plus récents')),
-                  PopupMenuItem(value: 2, child: Text('A → Z')),
-                  PopupMenuItem(value: 3, child: Text('Mieux notés')),
-                ],
-              ),
-            ]),
-          ),
-          SizedBox(
-            height: 52,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: d.cats.length + 2,
-              itemBuilder: (_, i) {
-                final id = i == 0 ? 'all' : i == 1 ? 'fav' : d.cats[i - 2].id;
-                final label =
-                    i == 0 ? 'Tous' : i == 1 ? '★ Favoris' : d.cats[i - 2].name;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  child: ChoiceChip(
-                    label: Text(label),
-                    selected: _cat == id,
-                    onSelected: (_) => setState(() => _cat = id),
-                  ),
-                );
-              },
+        // Films / Séries
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: _buildCategoryChips(d, accent)),
+                _buildSortMenu(),
+                IconButton(
+                  tooltip: 'Actualiser',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: () => setState(() => _f = _load(refresh: true)),
+                ),
+              ],
             ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                setState(() => _f = _load(refresh: true));
-                await _f;
-              },
-              child: ValueListenableBuilder(
-                valueListenable: app.store.user.listenable(),
-                builder: (_, __, ___) => _vodGrid(_list(d)),
-              ),
-            ),
-          ),
-        ]);
+            Expanded(child: _vodGrid(list)),
+          ],
+        );
       },
     );
   }
