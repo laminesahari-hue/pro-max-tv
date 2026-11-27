@@ -1,7 +1,6 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:android_intent_plus/android_intent.dart';
-
-import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,7 +24,7 @@ String _hm(DateTime d) =>
 
 String _trackName(String id, String? title, String? lang) {
   if (id == 'auto') return 'Auto';
-  if (id == 'no') return 'Désactivés';
+  if (id == 'no') return 'Désactivé';
   final n = <String>[
     if (title != null && title.isNotEmpty) title,
     if (lang != null && lang.isNotEmpty) lang,
@@ -64,22 +63,35 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  static final _fits = List<BoxFit>.of(<BoxFit>[BoxFit.contain, BoxFit.cover, BoxFit.fill]);
-  static const _panelW = 290.0;
+  static final _fits = List<BoxFit>.of(<BoxFit>[
+    BoxFit.contain,
+    BoxFit.cover,
+    BoxFit.fill,
+  ]);
+  static const _fitNames = <String>[
+    'Ajuster',
+    'Zoom (plein écran)',
+    'Étirer',
+  ];
+  static const _panelW = 310.0;
 
   late AppScope app;
-bool _inited = false;
+  bool _inited = false;
   late final Player player;
   late final VideoController controller;
+
   final _subs = <StreamSubscription>[];
   final _focus = FocusNode();
   final _playFocus = FocusNode();
-  final _panelFocus = FocusNode();
   Timer? _hide, _save, _info, _abr, _digitTimer, _zapDebounce;
 
   late List<Item> _allChannels;
   List<Cat> _cats = <Cat>[];
   String _selectedCat = 'all';
+
+  // Cache EPG léger pour la liste compacte des chaînes
+  final Map<String, String> _epgNowTitles = <String, String>{};
+  final Set<String> _epgLoading = <String>{};
 
   late int _idx;
   late int _fit;
@@ -102,6 +114,7 @@ bool _inited = false;
   Item get _item => _live ? _allChannels.elementAt(_idx) : widget.item!;
   String get _title => _live ? _item.name : widget.title;
   int get _step => app.store.get<int>('seek_step', 10);
+  int get _overlaySecs => app.store.get<int>('overlay_secs', 6);
 
   List<VideoTrack> get _variants {
     final l = player.state.tracks.video
@@ -111,58 +124,58 @@ bool _inited = false;
     return l;
   }
 
-  
-    @override
+  String get _activeResLabel {
+    final h = player.state.track.video.h ?? player.state.height ?? 0;
+    return h > 0 ? '${h}p' : '';
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_inited) return;
     _inited = true;
+
     app = AppScope.of(context);
     final st = app.store;
-
-    
-    
     _allChannels = _live ? List<Item>.of(widget.channels!) : <Item>[];
     _idx = widget.index;
-    _fit = st.get<int>('fit', 0);
+    _fit = st.get<int>('fit', 0).clamp(0, 2);
 
-    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+    SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Tampon léger en Live TV (8 Mo) pour un démarrage immédiat, plus grand en VOD
     final sizes = _live ? <int>[4, 8, 16] : <int>[16, 32, 48];
     final bufIdx = st.get<int>('buffer', 1).clamp(0, 2);
+    
+
+    final useHw = st.get<bool>('hwdec', false);
 
     player = Player(
       configuration: PlayerConfiguration(
         bufferSize: sizes.elementAt(bufIdx) * 1024 * 1024,
       ),
     );
-        controller = VideoController(
-   player,
-   configuration: const VideoControllerConfiguration(
-     enableHardwareAcceleration: false,
-   ),
- );
+    controller = VideoController(
+      player,
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration: useHw,
+      ),
+    );
 
- if (!kIsWeb) {
-   try {
-     final dynamic dyn = player.platform;
-     // Décodage logiciel FFmpeg (corrige l'écran gris/rayé sur Android TV)
-     dyn.setProperty('hwdec', 'no');
-
-        // Optimisation réseau & reconnexion rapide
-                dyn.setProperty('reconnect', '1');
+    if (!kIsWeb) {
+      try {
+        final dynamic dyn = player.platform;
+        dyn.setProperty('hwdec', useHw ? 'auto-safe' : 'no');
+        dyn.setProperty('reconnect', '1');
         dyn.setProperty('reconnect-streamed', '1');
         dyn.setProperty('reconnect-delay-max', '2');
         dyn.setProperty('network-timeout', '8');
         dyn.setProperty('tls-verify', 'no');
-        dyn.setProperty('hls-bitrate', 'max'); // <-- Ajoutez cette ligne (ABR natif rapide)
-        dyn.setProperty('demuxer-max-back-bytes', '10MiB'); // <-- Ajoutez cette ligne
-
+        dyn.setProperty('hls-bitrate', 'max');
+        dyn.setProperty('demuxer-max-back-bytes', '10MiB');
 
         if (_live) {
           dyn.setProperty('cache', 'yes');
@@ -178,7 +191,6 @@ bool _inited = false;
         }
       } catch (_) {}
     }
- 
 
     _subs.addAll(<StreamSubscription>[
       player.stream.error.listen(_onError),
@@ -195,13 +207,16 @@ bool _inited = false;
       player.stream.tracks.listen((_) {
         if (mounted && _panel) setState(() {});
       }),
+      player.stream.track.listen((_) {
+        if (mounted && _panel) setState(() {});
+      }),
     ]);
+
     _save = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
     _abr = Timer.periodic(const Duration(seconds: 15), (_) => _abrTick());
     if (_live) _loadFolders();
     _openCurrent();
-        HardwareKeyboard.instance.addHandler(_onRawKey);
-
+    HardwareKeyboard.instance.addHandler(_onRawKey);
   }
 
   Future<void> _loadFolders() async {
@@ -250,7 +265,6 @@ bool _inited = false;
       }
       if (!mounted || gen != _gen) return;
 
-      // Sauvegarde historique et chargement EPG en parallèle sans bloquer la vidéo
       unawaited(st.saveHistory(ch, url, ch.name, 0, 0));
       unawaited(_loadEpg(ch));
     } else {
@@ -264,6 +278,12 @@ bool _inited = false;
     }
 
     if (!mounted || gen != _gen) return;
+
+    if (st.get<String>('default_player', 'internal') == 'external') {
+      await _openExternalPlayer(url);
+      if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+      return;
+    }
 
     await player.open(
       Media(
@@ -293,12 +313,32 @@ bool _inited = false;
   Future<void> _loadEpg(Item ch) async {
     try {
       final l = await app.epg.forChannel(ch, limit: 4);
-      if (!mounted || ch.id != _item.id) return;
-      setState(() => _progs = l);
+      if (!mounted) return;
+      if (l.isNotEmpty) {
+        _epgNowTitles[ch.id] = l.first.title;
+      }
+      if (ch.id == _item.id) {
+        setState(() => _progs = l);
+      }
     } catch (_) {}
   }
 
-  void _saveProgress() {
+  // Chargement EPG léger à la demande pour les lignes visibles dans la liste
+  void _ensureRowEpg(Item ch) {
+    if (_epgNowTitles.containsKey(ch.id) || _epgLoading.contains(ch.id)) return;
+    _epgLoading.add(ch.id);
+    app.epg.forChannel(ch, limit: 1).then((l) {
+      _epgLoading.remove(ch.id);
+      if (!mounted) return;
+      setState(() {
+        _epgNowTitles[ch.id] = l.isNotEmpty ? l.first.title : '';
+      });
+    }).catchError((_) {
+      _epgLoading.remove(ch.id);
+    });
+  }
+
+    void _saveProgress() {
     if (_live) return;
     final pos = player.state.position.inMilliseconds;
     final dur = player.state.duration.inMilliseconds;
@@ -350,18 +390,21 @@ bool _inited = false;
         player.setVideoTrack(v.elementAt(i));
       }
     }
-                
     setState(() {});
   }
 
-  Future<void> _openExternalPlayer() async {
+  Future<void> _openExternalPlayer([String? forcedUrl]) async {
     if (kIsWeb || !Platform.isAndroid) return;
 
-    final currentUrl = player.state.playlist.medias.isNotEmpty
-        ? player.state.playlist.medias.first.uri
-        : (_live
-            ? await app.api.liveStream(_item, ext: app.store.get<String>('live_ext', 'm3u8'))
-            : widget.url);
+    final currentUrl = forcedUrl ??
+        (player.state.playlist.medias.isNotEmpty
+            ? player.state.playlist.medias.first.uri
+            : (_live
+                ? await app.api.liveStream(
+                    _item,
+                    ext: app.store.get<String>('live_ext', 'm3u8'),
+                  )
+                : widget.url));
 
     if (currentUrl == null || currentUrl.isEmpty) return;
 
@@ -374,7 +417,6 @@ bool _inited = false;
     await intent.launch();
   }
 
-  
   void _zap(int delta) {
     if (!_live || _allChannels.isEmpty) return;
     _prevIdx = _idx;
@@ -399,6 +441,13 @@ bool _inited = false;
     });
     _showBanner();
     _openCurrent();
+  }
+
+  void _shiftCategory(int delta) {
+    if (_cats.isEmpty) return;
+    final i = _cats.indexWhere((c) => c.id == _selectedCat);
+    final next = ((i < 0 ? 0 : i) + delta + _cats.length) % _cats.length;
+    setState(() => _selectedCat = _cats[next].id);
   }
 
   void _onDigit(String d) {
@@ -433,7 +482,7 @@ bool _inited = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_panel && !_chanList) _playFocus.requestFocus();
       });
-      _hide = Timer(const Duration(seconds: 5), () {
+      _hide = Timer(Duration(seconds: _overlaySecs), () {
         if (mounted && !_panel && !_chanList) setState(() => _show = false);
       });
     } else {
@@ -444,13 +493,13 @@ bool _inited = false;
   void _bumpControls() {
     if (!_show) return;
     _hide?.cancel();
-    _hide = Timer(const Duration(seconds: 5), () {
+    _hide = Timer(Duration(seconds: _overlaySecs), () {
       if (mounted && !_panel && !_chanList) setState(() => _show = false);
     });
   }
 
-  void _cycleFit() {
-    setState(() => _fit = (_fit + 1) % _fits.length);
+  void _setFit(int idx) {
+    setState(() => _fit = idx.clamp(0, _fits.length - 1));
     app.store.set('fit', _fit);
   }
 
@@ -472,7 +521,8 @@ bool _inited = false;
     player.seek(clamped);
     _bumpControls();
   }
-    bool _onRawKey(KeyEvent event) {
+
+  bool _onRawKey(KeyEvent event) {
     if (!mounted) return false;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
     final key = event.logicalKey;
@@ -498,20 +548,32 @@ bool _inited = false;
       return true;
     }
 
-    if (_panel || _chanList) {
+    if (_chanList) {
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        _shiftCategory(-1);
+        return true;
+      }
+      if (key == LogicalKeyboardKey.arrowRight) {
+        _shiftCategory(1);
+        return true;
+      }
       return false;
     }
+
+    if (_panel) return false;
 
     if (_show) {
       _bumpControls();
       return false;
     }
 
+    final dir = app.store.get<bool>('remote_invert_zap', false) ? -1 : 1;
+
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.gameButtonA) {
-      if (_live) {
+      if (_live && app.store.get<String>('remote_ok_action', 'list') == 'list') {
         setState(() => _chanList = true);
       } else {
         _toggleControls(true);
@@ -522,7 +584,7 @@ bool _inited = false;
     if (key == LogicalKeyboardKey.arrowUp ||
         key == LogicalKeyboardKey.channelUp) {
       if (_live) {
-        _zap(1);
+        _zap(key == LogicalKeyboardKey.channelUp ? 1 : dir);
       } else {
         _toggleControls(true);
       }
@@ -532,7 +594,7 @@ bool _inited = false;
     if (key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.channelDown) {
       if (_live) {
-        _zap(-1);
+        _zap(key == LogicalKeyboardKey.channelDown ? -1 : -dir);
       } else {
         _toggleControls(true);
       }
@@ -541,7 +603,11 @@ bool _inited = false;
 
     if (key == LogicalKeyboardKey.arrowLeft) {
       if (_live) {
-        if (_prevIdx != null) _jumpToIndex(_prevIdx!);
+        if (app.store.get<bool>('remote_left_prev', true) && _prevIdx != null) {
+          _jumpToIndex(_prevIdx!);
+        } else {
+          _toggleControls(true);
+        }
       } else {
         _seekBy(-_step);
         _toggleControls(true);
@@ -562,41 +628,15 @@ bool _inited = false;
     return false;
   }
 
-
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
 
-    // Retour télécommande
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.browserBack) {
-      if (_panel || _chanList) {
-        setState(() {
-          _panel = false;
-          _chanList = false;
-        });
-        _focus.requestFocus();
-        return KeyEventResult.handled;
-      }
-      if (_show) {
-        _toggleControls(false);
-        return KeyEventResult.handled;
-      }
-      Navigator.of(context).maybePop();
-      return KeyEventResult.handled;
-    }
+    if (_panel || _chanList) return KeyEventResult.ignored;
 
-    // Laisser la navigation D-Pad gérer les panneaux ouverts
-    if (_panel || _chanList) {
-      return KeyEventResult.ignored;
-    }
-
-    // Pavé numérique (zapping direct par numéro de chaîne)
-    final digitMap = <LogicalKeyboardKey, String>{
+    const digitMap = <LogicalKeyboardKey, String>{
       LogicalKeyboardKey.digit0: '0',
       LogicalKeyboardKey.numpad0: '0',
       LogicalKeyboardKey.digit1: '1',
@@ -623,15 +663,6 @@ bool _inited = false;
       return KeyEventResult.handled;
     }
 
-    // Touches multimédia dédiées
-    if (key == LogicalKeyboardKey.channelUp) {
-      _zap(1);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.channelDown) {
-      _zap(-1);
-      return KeyEventResult.handled;
-    }
     if (key == LogicalKeyboardKey.mediaPlayPause ||
         key == LogicalKeyboardKey.space) {
       player.playOrPause();
@@ -643,63 +674,17 @@ bool _inited = false;
       return KeyEventResult.handled;
     }
 
-    // Navigation quand l'OSD est masqué
-    if (!_show) {
-      if (key == LogicalKeyboardKey.select ||
-          key == LogicalKeyboardKey.enter ||
-          key == LogicalKeyboardKey.numpadEnter) {
-        if (_live) {
-          setState(() => _chanList = true);
-        } else {
-          _toggleControls(true);
-        }
-        return KeyEventResult.handled;
-      }
-      if (key == LogicalKeyboardKey.arrowUp) {
-        if (_live) {
-          _zap(1);
-        } else {
-          _toggleControls(true);
-        }
-        return KeyEventResult.handled;
-      }
-      if (key == LogicalKeyboardKey.arrowDown) {
-        if (_live) {
-          _zap(-1);
-        } else {
-          _toggleControls(true);
-        }
-        return KeyEventResult.handled;
-      }
-      if (key == LogicalKeyboardKey.arrowLeft) {
-        if (_live) {
-          if (_prevIdx != null) _jumpToIndex(_prevIdx!);
-        } else {
-          _seekBy(-_step);
-          _toggleControls(true);
-        }
-        return KeyEventResult.handled;
-      }
-      if (key == LogicalKeyboardKey.arrowRight) {
-        if (_live) {
-          _toggleControls(true);
-        } else {
-          _seekBy(_step);
-          _toggleControls(true);
-        }
-        return KeyEventResult.handled;
-      }
-    } else {
-      _bumpControls();
-    }
-
+    if (_show) _bumpControls();
     return KeyEventResult.ignored;
   }
 
   @override
-  void dispose() { HardwareKeyboard.instance.removeHandler(_onRawKey);
-
-    _saveProgress();
+  void dispose() {
+    if (_inited) {
+      HardwareKeyboard.instance.removeHandler(_onRawKey);
+      _saveProgress();
+      player.dispose();
+    }
     for (final s in _subs) {
       s.cancel();
     }
@@ -711,16 +696,12 @@ bool _inited = false;
     _zapDebounce?.cancel();
     _focus.dispose();
     _playFocus.dispose();
-    _panelFocus.dispose();
-    player.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
-                  
-                
-    @override
+  @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
@@ -738,54 +719,31 @@ bool _inited = false;
           Navigator.of(context).pop();
         }
       },
-
       child: Scaffold(
         backgroundColor: Colors.black,
-                body: Shortcuts(
-          shortcuts: !_show && !_panel && !_chanList
-              ? const <ShortcutActivator, Intent>{
-                  SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-                  SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-                  SingleActivator(LogicalKeyboardKey.numpadEnter):
-                      ActivateIntent(),
-                }
-              : const <ShortcutActivator, Intent>{},
-          child: Actions(
-            actions: <Type, Action<Intent>>{
-              ActivateIntent: CallbackAction<ActivateIntent>(
-                onInvoke: (_) {
-                  if (!_show && !_panel && !_chanList) {
-                    _toggleControls(true);
-                  }
-                  return null;
-                },
-              ),
+        body: Focus(
+          focusNode: _focus,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (_panel || _chanList) {
+                setState(() {
+                  _panel = false;
+                  _chanList = false;
+                });
+                _focus.requestFocus();
+              } else {
+                _toggleControls();
+              }
             },
-            child: Focus(
-
-              focusNode: _focus,
-              autofocus: true,
-              onKeyEvent: _onKey,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (_panel || _chanList) {
-                    setState(() {
-                      _panel = false;
-                      _chanList = false;
-                    });
-                    _focus.requestFocus();
-                  } else {
-                    _toggleControls();
-                  }
-                },
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    // Flux vidéo
-                                    // Fond noir absolu
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
                 const ColoredBox(color: Colors.black),
-                // Flux vidéo (masqué tant que la 1re trame n'est pas décodée)
+
+                // Flux vidéo
                 AnimatedOpacity(
                   opacity: _started ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 180),
@@ -797,133 +755,130 @@ bool _inited = false;
                   ),
                 ),
 
+                // Chargement
+                if (_buffering && _error == null)
+                  const Center(
+                    child: CircularProgressIndicator(color: _kNeon),
+                  ),
 
-                    // Indicateur de chargement
-                    if (_buffering && _error == null)
-                      const Center(
-                        child: CircularProgressIndicator(color: _kNeon),
+                // Erreur + Réessayer / Lecteur externe
+                if (_error != null)
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0E1420),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white24),
                       ),
-
-                    // Message d'erreur + bouton réessayer
-                    if (_error != null)
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Icon(Icons.error_outline,
+                              color: Colors.redAccent, size: 40),
+                          const SizedBox(height: 10),
+                          Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.white),
+                            textAlign: TextAlign.center,
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 12,
+                            alignment: WrapAlignment.center,
                             children: <Widget>[
-                              const Icon(Icons.error_outline,
-                                  color: Colors.redAccent, size: 40),
-                              const SizedBox(height: 10),
-                              Text(
-                                _error!,
-                                style: const TextStyle(color: Colors.white),
-                                textAlign: TextAlign.center,
+                              FilledButton.icon(
+                                autofocus: true,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _kNeon,
+                                  foregroundColor: Colors.black,
+                                ),
+                                onPressed: () {
+                                  _retries = 0;
+                                  _openCurrent();
+                                },
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Réessayer'),
                               ),
-                              const SizedBox(height: 14),
-                                                            Wrap(
-                                spacing: 12,
-                                alignment: WrapAlignment.center,
-                                children: <Widget>[
-                                  FilledButton.icon(
-                                    autofocus: true,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: _kNeon,
-                                      foregroundColor: Colors.black,
-                                    ),
-                                    onPressed: () {
-                                      _retries = 0;
-                                      _openCurrent();
-                                    },
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('Réessayer'),
-                                  ),
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.white,
-                                      side: const BorderSide(color: Colors.white54),
-                                    ),
-                                    onPressed: _openExternalPlayer,
-                                    icon: const Icon(Icons.open_in_new),
-                                    label: const Text('Lecteur externe'),
-                                  ),
-                                ],
-                                                              
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.white54),
+                                ),
+                                onPressed: () => _openExternalPlayer(),
+                                icon: const Icon(Icons.open_in_new),
+                                label: const Text('Lecteur externe'),
                               ),
                             ],
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Numéro saisi à la télécommande
+                if (_digits.isNotEmpty)
+                  Positioned(
+                    top: 28,
+                    right: 32,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _kNeon, width: 2),
+                      ),
+                      child: Text(
+                        _digits,
+                        style: const TextStyle(
+                          color: _kNeon,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                                            
-                    // Saisie numérique de chaîne
-                    if (_digits.isNotEmpty)
-                      Positioned(
-                        top: 28,
-                        right: 32,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: _kNeon, width: 2),
-                          ),
-                          child: Text(
-                            _digits,
-                            style: const TextStyle(
-                              color: _kNeon,
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
+                    ),
+                  ),
 
-                    // Bannière d'info zapping / EPG EN BAS
-                    if (_live && (_showInfo || _show) && !_chanList)
-                      Positioned(
-                        left: 24,
-                        right: 24,
-                        bottom: _show ? 78 : 24,
-                        child: _buildLiveHeader(),
-                      ),
+                // Bannière info zapping / EPG
+                if (_live && (_showInfo || _show) && !_chanList)
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: _show ? 88 : 24,
+                    child: _buildLiveHeader(),
+                  ),
 
-                    // Boutons d'options en bas (Chaînes, Pause, Format, Pistes & Qualité)
-                    if (_show && !_chanList)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: _buildBottomControls(),
-                      ),
+                // Barre de contrôle en bas
+                if (_show && !_chanList)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _buildBottomControls(),
+                  ),
 
-                    // Panneau latéral gauche : Liste rapide des chaînes
-                    if (_live && _chanList)
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 360,
-                        child: _buildChannelDrawer(),
-                      ),
+                // Tiroir latéral gauche : Liste compacte (Numéro + Logo + Nom + EPG)
+                if (_live && _chanList)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 390,
+                    child: _buildChannelDrawer(),
+                  ),
 
-                    // Panneau latéral droit : Qualité / Audio / Sous-titres
-                    if (_panel)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: _panelW,
-                        child: _buildTracksPanel(),
-                      ),
-                  ],
-                ),
-              ),
+                // Panneau latéral droit : Audio, Sous-titres, Qualité & Format
+                if (_panel)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: _panelW,
+                    child: _buildTracksPanel(),
+                  ),
+              ],
             ),
           ),
         ),
@@ -931,14 +886,21 @@ bool _inited = false;
     );
   }
 
-
-    Widget _buildLiveHeader() {
+  // --- BANNIÈRE INFO CHAÎNE + EPG ---
+  Widget _buildLiveHeader() {
     final nowProg = _progs.isNotEmpty ? _progs.first : null;
-    final nextProg = _progs.length > 1 ? _progs[1] : null;
+    final nextProg = _progs.length > 1 ? _progs : null;
+    double progress = 0.0;
+    if (nowProg != null) {
+      final total = nowProg.end.difference(nowProg.start).inSeconds;
+      final elapsed = DateTime.now().difference(nowProg.start).inSeconds;
+      if (total > 0) progress = (elapsed / total).clamp(0.0, 1.0);
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.82),
+        color: const Color(0xE60B101C),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white12),
       ),
@@ -960,47 +922,75 @@ bool _inited = false;
             ),
           ),
           const SizedBox(width: 14),
+          if (_item.icon.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Image.network(
+                _item.icon,
+                width: 42,
+                height: 42,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
-                  _title,
+                  _item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 if (nowProg != null) ...<Widget>[
                   const SizedBox(height: 4),
-                  Text(
-                    '${_hm(nowProg.start)} - ${_hm(nowProg.end)} · ${nowProg.title}',
-                    style: const TextStyle(color: _kNeon, fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: <Widget>[
+                      Text(
+                        '${_hm(nowProg.start)} - ${_hm(nowProg.end)}',
+                        style: const TextStyle(color: _kNeon, fontSize: 12),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          nowProg.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 6),
+                                    ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 4,
+                      backgroundColor: Colors.white24,
+                      valueColor: const AlwaysStoppedAnimation<Color>(_kNeon),
+                    ),
+                  ),
+                  if (nextProg != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      'À suivre (${_hm(nextProg.start)}) : ${nextProg.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
                 ],
-                if (nextProg != null)
-                  Text(
-                    'À suivre (${_hm(nextProg.start)}) : ${nextProg.title}',
-                    style:
-                        const TextStyle(color: Colors.white70, fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
               ],
-            ),
-          ),
-          Text(
-            _hm(DateTime.now()),
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -1008,141 +998,145 @@ bool _inited = false;
     );
   }
 
-    Widget _buildBottomControls() {
-    final fitNames = <String>['Ajuster', 'Zoom', 'Étirer'];
+  // --- BARRE DE CONTRÔLE EN BAS ---
+  Widget _buildBottomControls() {
+    final isFav = app.store.isFav(_item);
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: <Color>[Colors.black87, Colors.transparent],
+          colors: <Color>[Color(0xF2070B14), Colors.transparent],
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          if (!_live) ...<Widget>[
-            Text(
-              _title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
+          if (!_live)
             StreamBuilder<Duration>(
               stream: player.stream.position,
-              builder: (context, snap) {
+              builder: (_, snap) {
                 final pos = snap.data ?? player.state.position;
                 final dur = player.state.duration;
-                final maxMs = dur.inMilliseconds > 0
-                    ? dur.inMilliseconds.toDouble()
-                    : 1.0;
-                final curMs =
-                    pos.inMilliseconds.clamp(0, maxMs.toInt()).toDouble();
+                final maxMs = dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
+                final valMs = pos.inMilliseconds.clamp(0, maxMs.toInt()).toDouble();
                 return Row(
                   children: <Widget>[
-                    Text(_fmt(pos),
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12)),
+                    Text(_fmt(pos), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                     Expanded(
                       child: Slider(
-                        value: curMs,
-                        max: maxMs,
                         activeColor: _kNeon,
                         inactiveColor: Colors.white24,
+                        value: valMs,
+                        max: maxMs,
                         onChanged: (v) {
                           player.seek(Duration(milliseconds: v.toInt()));
                           _bumpControls();
                         },
                       ),
                     ),
-                    Text(_fmt(dur),
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12)),
+                    Text(_fmt(dur), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                   ],
                 );
               },
             ),
-          ],
-                    Row(
+          Row(
             children: <Widget>[
-              if (_live)
+              if (_live) ...<Widget>[
                 _osdButton(
-                  focusNode: _playFocus,
                   icon: Icons.list,
                   label: 'Chaînes',
                   onPressed: () {
                     setState(() {
-                      _chanList = true;
                       _show = false;
+                      _chanList = true;
                     });
                   },
                 ),
-              if (!_live)
+                const SizedBox(width: 8),
+                _osdButton(
+                  icon: isFav ? Icons.star : Icons.star_border,
+                  label: isFav ? 'Favori' : 'Ajouter',
+                  onPressed: () async {
+                    await app.store.toggleFav(_item);
+                    setState(() {});
+                  },
+                ),
+              ],
+              if (!_live) ...<Widget>[
+                Expanded(
+                  child: Text(
+                    _title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
                 _osdButton(
                   icon: Icons.replay_10,
                   label: '-${_step}s',
                   onPressed: () => _seekBy(-_step),
                 ),
+              ] else
+                const Spacer(),
+
+              // Bouton Lecture / Pause central
               StreamBuilder<bool>(
                 stream: player.stream.playing,
-                builder: (context, snap) {
+                builder: (_, snap) {
                   final playing = snap.data ?? player.state.playing;
-                  return _osdButton(
-                    focusNode: !_live ? _playFocus : null,
-                    icon: playing ? Icons.pause : Icons.play_arrow,
-                    label: playing ? 'Pause' : 'Lecture',
-                    onPressed: () {
-                      player.playOrPause();
-                      _bumpControls();
-                    },
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: IconButton.filled(
+                      focusNode: _playFocus,
+                      style: IconButton.styleFrom(
+                        backgroundColor: _kNeon,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.all(12),
+                      ),
+                      icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 26),
+                      onPressed: () {
+                        player.playOrPause();
+                        _bumpControls();
+                      },
+                    ),
                   );
                 },
               ),
 
-                          if (!kIsWeb)
-            _osdButton(
-              icon: Icons.open_in_new,
-              label: 'Externe',
-              onPressed: _openExternalPlayer,
-            ),
-              
-              
-              if (!_live)
+              if (!_live) ...<Widget>[
                 _osdButton(
                   icon: Icons.forward_10,
                   label: '+${_step}s',
                   onPressed: () => _seekBy(_step),
                 ),
-              const Spacer(),
-              if (!_live)
-                _osdButton(
-                  icon: Icons.speed,
-                  label: '${_rate}x',
-                  onPressed: _cycleRate,
-                ),
+                const Spacer(),
+              ] else
+                const Spacer(),
+
               _osdButton(
-                icon: Icons.aspect_ratio,
-                label: fitNames[_fit],
-                onPressed: _cycleFit,
-              ),
-              _osdButton(
-                icon: Icons.tune,
-                label: 'Pistes & Qualité',
+                icon: Icons.subtitles,
+                label: 'Audio & Qualité',
                 onPressed: () {
                   setState(() {
-                    _panel = true;
                     _show = false;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _panelFocus.requestFocus();
+                    _panel = true;
                   });
                 },
               ),
+              const SizedBox(width: 8),
+              if (!kIsWeb)
+                _osdButton(
+                  icon: Icons.open_in_new,
+                  label: 'Externe',
+                  onPressed: () => _openExternalPlayer(),
+                ),
             ],
           ),
         ],
@@ -1150,175 +1144,183 @@ bool _inited = false;
     );
   }
 
-      
-    
-  
-
   Widget _osdButton({
-    FocusNode? focusNode,
     required IconData icon,
     required String label,
     required VoidCallback onPressed,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: TextButton.icon(
-        focusNode: focusNode,
-        style: ButtonStyle(
-          foregroundColor: WidgetStateProperty.resolveWith((states) {
-            return states.contains(WidgetState.focused)
-                ? Colors.black
-                : Colors.white;
-          }),
-          backgroundColor: WidgetStateProperty.resolveWith((states) {
-            return states.contains(WidgetState.focused)
-                ? _kNeon
-                : Colors.white10;
-          }),
-          shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-        onPressed: onPressed,
-        icon: Icon(icon, size: 20),
-        label: Text(label),
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: const BorderSide(color: Colors.white24),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ).copyWith(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return _kNeon;
+          return Colors.black54;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return Colors.black;
+          return Colors.white;
+        }),
       ),
+      onPressed: () {
+        _bumpControls();
+        onPressed();
+      },
+      icon: Icon(icon, size: 18),
+      label: Text(label, style: const TextStyle(fontSize: 13)),
     );
   }
 
-        Widget _buildChannelDrawer() {
+  // --- TIROIR GAUCHE : LISTE COMPACTE (NUMÉRO + LOGO + NOM + EPG EN DESSOUS) ---
+  Widget _buildChannelDrawer() {
     final filtered = _selectedCat == 'all'
         ? _allChannels
         : _allChannels.where((c) => c.cat == _selectedCat).toList();
-    final hasActiveInFiltered = filtered
-        .any((ch) => _allChannels.indexWhere((x) => x.id == ch.id) == _idx);
 
-    return Material(
-      color: const Color(0xF2101216),
-      child: FocusScope(
-        autofocus: true,
+    final currentCatName = _cats
+        .firstWhere(
+          (c) => c.id == _selectedCat,
+          orElse: () => const Cat('all', 'Toutes les chaînes'),
+        )
+        .name;
+
+    return Container(
+      color: const Color(0xF50B0E14),
+      child: SafeArea(
         child: Column(
           children: <Widget>[
-            if (_cats.isNotEmpty)
-              SizedBox(
-                height: 52,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  itemCount: _cats.length,
-                  itemBuilder: (context, i) {
-                    final cat = _cats[i];
-                    final sel = cat.id == _selectedCat;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Focus(
-                        child: Builder(
-                          builder: (ctx) {
-                            final focused = Focus.of(ctx).hasFocus;
-                            return ChoiceChip(
-                              label: Text(cat.name),
-                              selected: sel,
-                              selectedColor: _kNeon,
-                              side: focused
-                                  ? const BorderSide(
-                                      color: Colors.white, width: 2.5)
-                                  : BorderSide.none,
-                              labelStyle: TextStyle(
-                                color: sel ? Colors.black : Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              backgroundColor: Colors.white12,
-                              onSelected: (_) =>
-                                  setState(() => _selectedCat = cat.id),
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+              decoration: const BoxDecoration(
+                color: Color(0xFF121722),
+                border: Border(bottom: BorderSide(color: Colors.white12)),
               ),
-            const Divider(height: 1, color: Colors.white24),
+              child: Row(
+                children: <Widget>[
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, color: _kNeon),
+                    onPressed: () => _shiftCategory(-1),
+                  ),
+                  Expanded(
+                    child: Text(
+                      currentCatName,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, color: _kNeon),
+                    onPressed: () => _shiftCategory(1),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: ListView.builder(
                 itemCount: filtered.length,
-                itemBuilder: (context, i) {
+                itemBuilder: (_, i) {
                   final ch = filtered[i];
-                  final globalIdx =
-                      _allChannels.indexWhere((x) => x.id == ch.id);
-                  final active = globalIdx == _idx;
-                  final shouldAutofocus =
-                      active || (!hasActiveInFiltered && i == 0);
+                  final realIdx = _allChannels.indexWhere((x) => x.id == ch.id);
+                  final selected = realIdx == _idx;
+                  _ensureRowEpg(ch);
+                  final epgTitle = _epgNowTitles[ch.id] ?? '';
 
                   return Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     child: InkWell(
-                      autofocus: shouldAutofocus,
+                      autofocus: selected,
                       borderRadius: BorderRadius.circular(10),
-                      onTap: () => _jumpToIndex(globalIdx),
-                      child: Builder(
-                        builder: (ctx) {
-                          final focused = Focus.of(ctx).hasFocus;
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: focused
-                                  ? _kNeon.withValues(alpha: 0.30)
-                                  : (active
-                                      ? _kNeon.withValues(alpha: 0.14)
-                                      : Colors.transparent),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: focused
-                                    ? _kNeon
-                                    : (active
-                                        ? _kNeon.withValues(alpha: 0.4)
-                                        : Colors.transparent),
-                                width: focused ? 2.5 : 1,
+                      focusColor: _kNeon.withOpacity(0.28),
+                      onTap: () => _jumpToIndex(realIdx),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? _kNeon.withOpacity(0.18)
+                          color: selected
+                              ? _kNeon.withOpacity(0.18)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: selected
+                              ? Border.all(color: _kNeon, width: 1.2)
+                              : null,
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            SizedBox(
+                              width: 38,
+                              child: Text(
+                                '${realIdx + 1}',
+                                style: TextStyle(
+                                  color: selected ? _kNeon : Colors.white54,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
-                            child: Row(
-                              children: <Widget>[
-                                SizedBox(
-                                  width: 36,
-                                  child: Text(
-                                    '${globalIdx + 1}',
-                                    style: TextStyle(
-                                      color: (focused || active)
-                                          ? _kNeon
-                                          : Colors.white54,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                            SizedBox(
+                              width: 34,
+                              height: 30,
+                              child: ch.icon.isNotEmpty
+                                  ? Image.network(
+                                      ch.icon,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.tv,
+                                        color: Colors.white38,
+                                        size: 20,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.tv,
+                                      color: Colors.white38,
+                                      size: 20,
                                     ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text(
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(
                                     ch.name,
-                                    style: TextStyle(
-                                      color: focused
-                                          ? Colors.white
-                                          : (active ? _kNeon : Colors.white70),
-                                      fontWeight: (focused || active)
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      fontSize: 15,
-                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: selected ? _kNeon : Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13.5,
+                                    ),
                                   ),
-                                ),
-                                if (active)
-                                  const Icon(Icons.play_arrow_rounded,
-                                      color: _kNeon, size: 20),
-                              ],
+                                  if (epgTitle.isNotEmpty) ...<Widget>[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      epgTitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: selected
+                                            ? Colors.white70
+                                            : Colors.white54,
+                                        fontSize: 11.5,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
-                          );
-                        },
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -1331,77 +1333,141 @@ bool _inited = false;
     );
   }
 
-
-
+  // --- PANNEAU DROIT : AUDIO, SOUS-TITRES, QUALITÉ & FORMAT ---
   Widget _buildTracksPanel() {
     final audios = player.state.tracks.audio
-        .where((t) => t.id != 'auto')
+        .where((t) => t.id != 'auto' && t.id != 'no')
         .toList();
     final subs = player.state.tracks.subtitle
         .where((t) => t.id != 'auto')
         .toList();
-    final variants = _variants;
+    final curAudio = player.state.track.audio.id;
+    final curSub = player.state.track.subtitle.id;
+    final res = _activeResLabel;
 
-    return Material(
-      color: const Color(0xEE101216),
-      child: Focus(
-        focusNode: _panelFocus,
+    Widget sectionTitle(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+          child: Text(
+            t.toUpperCase(),
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1,
+            ),
+          ),
+        );
+
+    Widget radioRow(String label, bool selected, VoidCallback onTap,
+        {bool autofocus = false}) {
+      return ListTile(
+        autofocus: autofocus,
+        dense: true,
+        title: Text(
+          label,
+          style: TextStyle(
+            color: selected ? _kNeon : Colors.white,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          ),
+        ),
+        trailing: selected
+            ? const Icon(Icons.check, color: _kNeon, size: 18)
+            : null,
+        onTap: onTap,
+      );
+    }
+
+    return Container(
+      color: const Color(0xF5111726),
+      child: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
           children: <Widget>[
-            const Text('Qualité vidéo',
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                'Audio et sous-titres',
                 style: TextStyle(
-                    color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+
+            sectionTitle(_live ? 'Direct TV' : 'Lecture'),
             ListTile(
               autofocus: true,
-              title: const Text('Auto (ABR)',
-                  style: TextStyle(color: Colors.white)),
-              trailing: _q == 'auto'
-                  ? const Icon(Icons.check, color: _kNeon)
-                  : null,
-              onTap: () => _setQuality('auto'),
+              dense: true,
+              leading: const Icon(Icons.pause_circle_outline, color: Colors.white70),
+              title: const Text('Mettre en pause / Reprendre',
+                  style: TextStyle(color: Colors.white, fontSize: 14)),
+              onTap: () {
+                player.playOrPause();
+                setState(() => _panel = false);
+              },
             ),
-            for (final v in variants)
+            if (!kIsWeb)
               ListTile(
-                title: Text(_vLabel(v),
-                    style: const TextStyle(color: Colors.white)),
-                trailing: _q == v.id
-                    ? const Icon(Icons.check, color: _kNeon)
-                    : null,
-                onTap: () => _setQuality(v.id),
-              ),
-            const Divider(color: Colors.white12),
-            const Text('Audio',
-                style: TextStyle(
-                    color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
-            for (final a in audios)
-              ListTile(
-                title: Text(_trackName(a.id, a.title, a.language),
-                    style: const TextStyle(color: Colors.white)),
-                trailing: player.state.track.audio.id == a.id
-                    ? const Icon(Icons.check, color: _kNeon)
-                    : null,
+                dense: true,
+                leading: const Icon(Icons.open_in_new, color: _kNeon),
+                title: const Text('Ouvrir dans VLC / MX Player',
+                    style: TextStyle(color: _kNeon, fontSize: 14)),
                 onTap: () {
-                  player.setAudioTrack(a);
-                  setState(() {});
+                  setState(() => _panel = false);
+                  _openExternalPlayer();
                 },
               ),
-            const Divider(color: Colors.white12),
-            const Text('Sous-titres',
-                style: TextStyle(
-                    color: _kNeon, fontWeight: FontWeight.bold, fontSize: 15)),
+
+            sectionTitle('Sous-titres'),
+            radioRow('Désactivé', curSub == 'no', () {
+              player.setSubtitleTrack(SubtitleTrack.no());
+              setState(() {});
+            }),
             for (final s in subs)
-              ListTile(
-                title: Text(_trackName(s.id, s.title, s.language),
-                    style: const TextStyle(color: Colors.white)),
-                trailing: player.state.track.subtitle.id == s.id
-                    ? const Icon(Icons.check, color: _kNeon)
-                    : null,
-                onTap: () {
+              if (s.id != 'no')
+                radioRow(_trackName(s.id, s.title, s.language), curSub == s.id, () {
                   player.setSubtitleTrack(s);
                   setState(() {});
-                },
+                }),
+
+            sectionTitle('Audio'),
+            if (audios.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Text('Piste par défaut',
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+              )
+            else
+              for (final a in audios)
+                radioRow(_trackName(a.id, a.title, a.language), curAudio == a.id, () {
+                  player.setAudioTrack(a);
+                  setState(() {});
+                }),
+
+            sectionTitle('Qualité'),
+            radioRow(
+              res.isNotEmpty ? 'Auto (now $res)' : 'Auto',
+              _q == 'auto',
+              () => _setQuality('auto'),
+            ),
+            for (final v in _variants)
+              radioRow(_vLabel(v), _q == v.id, () => _setQuality(v.id)),
+
+            sectionTitle('Format de l\'image'),
+            for (int i = 0; i < _fitNames.length; i++)
+              radioRow(_fitNames[i], _fit == i, () => _setFit(i)),
+
+            if (!_live) ...<Widget>[
+              sectionTitle('Vitesse'),
+              ListTile(
+                dense: true,
+                title: Text('Vitesse : ${_rate}x',
+                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                onTap: _cycleRate,
               ),
+            ],
+            const SizedBox(height: 20),
           ],
         ),
       ),
