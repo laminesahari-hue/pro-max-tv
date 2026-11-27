@@ -1,3 +1,4 @@
+import '../widgets/tv_settings_items.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../core/scope.dart';
@@ -31,21 +32,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 letterSpacing: 1,
                 color: Theme.of(context).colorScheme.primary)),
       );
-
   Widget _sw(String key, String title, String sub, {bool def = true}) =>
-      SwitchListTile(
-        title: Text(title),
-        subtitle: Text(sub),
+      TvSwitchTile(
+        title: title,
+        subtitle: sub,
         value: app.store.get<bool>(key, def),
         onChanged: (v) => app.store.set(key, v),
       );
-
-  Widget _choice<T>(String key, String title, Map<T, String> opts, T def) {
+  
+      Widget _choice<T>(String key, String title, Map<T, String> opts, T def) {
     final cur = app.store.get<T>(key, def);
-    return ListTile(
-      title: Text(title),
-      subtitle: Text(opts[cur] ?? ''),
-      trailing: const Icon(Icons.chevron_right),
+    return TvNavTile(
+      title: title,
+      subtitle: opts[cur] ?? '',
       onTap: () async {
         final v = await showDialog<T>(
           context: context,
@@ -53,11 +52,12 @@ class _SettingsPageState extends State<SettingsPage> {
             title: Text(title),
             children: [
               for (final e in opts.entries)
-                ListTile(
-                  leading: Icon(e.key == cur
+                TvNavTile(
+                  autofocus: e.key == cur,
+                  icon: e.key == cur
                       ? Icons.radio_button_checked
-                      : Icons.radio_button_off),
-                  title: Text(e.value),
+                      : Icons.radio_button_off,
+                  title: e.value,
                   onTap: () => Navigator.pop(ctx, e.key),
                 ),
             ],
@@ -68,27 +68,34 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _link(IconData icon, String title, String sub, Widget page) => ListTile(
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(sub),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+
+    Widget _link(IconData icon, String title, String sub, Widget page,
+          {bool autofocus = false}) =>
+      TvNavTile(
+        icon: icon,
+        title: title,
+        subtitle: sub,
+        autofocus: autofocus,
+        onTap: () =>
+            Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
       );
 
-  Widget _action(IconData icon, String title, String sub, Future<void> Function() run,
-          String done) =>
-      ListTile(
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: sub.isEmpty ? null : Text(sub),
+
+    Widget _action(IconData icon, String title, String sub,
+          Future<void> Function() run, String done) =>
+      TvNavTile(
+        icon: icon,
+        title: title,
+        subtitle: sub.isEmpty ? null : sub,
         onTap: () async {
           await run();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(done)));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(done)));
           }
         },
       );
+
 
   @override
   Widget build(BuildContext context) {
@@ -105,8 +112,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   ?.copyWith(fontWeight: FontWeight.bold)),
         ),
         _head('Sources'),
-        _link(Icons.dns, 'Sources & playlists', 'Source active : ${app.profile.name}',
-            const SourcesScreen()),
+                _link(Icons.dns, 'Sources & playlists',
+            'Source active : ${app.profile.name}', const SourcesScreen(),
+            autofocus: true),
+
         _link(Icons.event_note, 'Sources EPG', 'Guides des programmes (XMLTV)',
             const EpgSourcesScreen()),
         _choice<String>('update_mode', 'Mise à jour des listes', const {
