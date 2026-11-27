@@ -80,13 +80,18 @@ class _ShellState extends State<Shell> {
         var i = tabs.indexWhere((t) => t.label == _sel);
         if (i < 0) i = 0;
 
-        final tick = st.get<int>('refresh', 0);
+                final tick = st.get<int>('refresh', 0);
         final page = isSettings
             ? KeyedSubtree(
                 key: ValueKey('Réglages$tick'),
                 child: const SettingsPage(),
               )
-                    final isHome = !isSettings && tabs[i].label == 'Accueil';
+            : KeyedSubtree(
+                key: ValueKey('${tabs[i].label}$tick'),
+                child: tabs[i].page,
+              );
+
+        final isHome = !isSettings && tabs[i].label == 'Accueil';
         final topPad = MediaQuery.of(context).padding.top + 68;
 
         return Scaffold(
