@@ -86,10 +86,8 @@ class _ShellState extends State<Shell> {
                 key: ValueKey('Réglages$tick'),
                 child: const SettingsPage(),
               )
-            : KeyedSubtree(
-                key: ValueKey('${tabs[i].label}$tick'),
-                child: tabs[i].page,
-              );
+                    final isHome = !isSettings && tabs[i].label == 'Accueil';
+        final topPad = MediaQuery.of(context).padding.top + 68;
 
         return Scaffold(
           backgroundColor: const Color(0xFF0A0D12),
@@ -97,9 +95,7 @@ class _ShellState extends State<Shell> {
             children: [
               Positioned.fill(
                 child: Padding(
-                  padding: EdgeInsets.only(
-                    top: (!isSettings && tabs[i].label == 'Accueil') ? 0 : 72,
-                  ),
+                  padding: EdgeInsets.only(top: isHome ? 0 : topPad),
                   child: page,
                 ),
               ),
@@ -107,19 +103,23 @@ class _ShellState extends State<Shell> {
                 top: 0,
                 left: 0,
                 right: 0,
-                child: SafeArea(
-                  bottom: false,
-                  child: _FloatingTopBar(
-                    tabs: tabs,
-                    selectedLabel: _sel,
-                    accent: neonGreen,
-                    onSelectLabel: (lbl) => setState(() => _sel = lbl),
-                    onSearch: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(title: const Text('Recherche')),
-                          body: const SearchPage(),
+                child: Container(
+                  color: isHome ? Colors.transparent : const Color(0xFF0A0D12),
+                  child: SafeArea(
+                    bottom: false,
+                    child: _FloatingTopBar(
+                      tabs: tabs,
+                      selectedLabel: _sel,
+                      accent: neonGreen,
+                      opaque: !isHome,
+                      onSelectLabel: (lbl) => setState(() => _sel = lbl),
+                      onSearch: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => Scaffold(
+                            appBar: AppBar(title: const Text('Recherche')),
+                            body: const SearchPage(),
+                          ),
                         ),
                       ),
                     ),
@@ -129,6 +129,8 @@ class _ShellState extends State<Shell> {
             ],
           ),
         );
+
+                          
       },
     );
   }
@@ -138,6 +140,7 @@ class _FloatingTopBar extends StatelessWidget {
   final List<_Tab> tabs;
   final String selectedLabel;
   final Color accent;
+  final bool opaque;
   final ValueChanged<String> onSelectLabel;
   final VoidCallback onSearch;
 
@@ -145,6 +148,7 @@ class _FloatingTopBar extends StatelessWidget {
     required this.tabs,
     required this.selectedLabel,
     required this.accent,
+    this.opaque = false,
     required this.onSelectLabel,
     required this.onSearch,
   });
@@ -156,17 +160,23 @@ class _FloatingTopBar extends StatelessWidget {
     return Container(
       height: 68,
       padding: EdgeInsets.symmetric(horizontal: isWide ? 32 : 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withOpacity(0.80),
-            Colors.black.withOpacity(0.35),
-            Colors.transparent,
-          ],
-        ),
-      ),
+      decoration: opaque
+          ? const BoxDecoration(
+              color: Color(0xFF0A0D12),
+              border: Border(bottom: BorderSide(color: Colors.white10)),
+            )
+          : BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.80),
+                  Colors.black.withOpacity(0.35),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+
       child: Row(
         children: [
           RichText(
