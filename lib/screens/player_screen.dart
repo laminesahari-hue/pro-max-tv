@@ -89,9 +89,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   List<Cat> _cats = <Cat>[];
   String _selectedCat = 'all';
 
-  // Cache EPG léger pour la liste compacte des chaînes
-  final Map<String, String> _epgNowTitles = <String, String>{};
-  final Set<String> _epgLoading = <String>{};
+  final Map<int, String> _epgNowTitles = <int, String>{};
+  final Set<int> _epgLoading = <int>{};
 
   late int _idx;
   late int _fit;
@@ -149,8 +148,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final sizes = _live ? <int>[4, 8, 16] : <int>[16, 32, 48];
     final bufIdx = st.get<int>('buffer', 1).clamp(0, 2);
-    
-
     final useHw = st.get<bool>('hwdec', false);
 
     player = Player(
@@ -323,7 +320,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (_) {}
   }
 
-  // Chargement EPG léger à la demande pour les lignes visibles dans la liste
   void _ensureRowEpg(Item ch) {
     if (_epgNowTitles.containsKey(ch.id) || _epgLoading.contains(ch.id)) return;
     _epgLoading.add(ch.id);
@@ -338,7 +334,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-    void _saveProgress() {
+  void _saveProgress() {
     if (_live) return;
     final pos = player.state.position.inMilliseconds;
     final dur = player.state.duration.inMilliseconds;
@@ -347,7 +343,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _abrTick() {
+    void _abrTick() {
     if (!mounted || _q != 'auto' || !app.store.get<bool>('abr', true)) return;
     final v = _variants;
     if (v.length < 2) return;
@@ -636,7 +632,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (_panel || _chanList) return KeyEventResult.ignored;
 
-    const digitMap = <LogicalKeyboardKey, String>{
+    final digitMap = <LogicalKeyboardKey, String>{
       LogicalKeyboardKey.digit0: '0',
       LogicalKeyboardKey.numpad0: '0',
       LogicalKeyboardKey.digit1: '1',
@@ -700,7 +696,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -922,17 +917,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          if (_item.icon.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Image.network(
-                _item.icon,
-                width: 42,
-                height: 42,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -971,7 +955,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                                    ClipRRect(
+                  ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: progress,
@@ -1246,8 +1230,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         decoration: BoxDecoration(
                           color: selected
                               ? _kNeon.withOpacity(0.18)
-                          color: selected
-                              ? _kNeon.withOpacity(0.18)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(10),
                           border: selected
@@ -1256,7 +1238,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                         child: Row(
                           children: <Widget>[
-                            SizedBox(
+                              SizedBox(
                               width: 38,
                               child: Text(
                                 '${realIdx + 1}',
@@ -1267,24 +1249,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             ),
-                            SizedBox(
-                              width: 34,
-                              height: 30,
-                              child: ch.icon.isNotEmpty
-                                  ? Image.network(
-                                      ch.icon,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.tv,
-                                        color: Colors.white38,
-                                        size: 20,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.tv,
-                                      color: Colors.white38,
-                                      size: 20,
-                                    ),
+                            const Icon(
+                              Icons.tv,
+                              color: Colors.white38,
+                              size: 20,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -1474,3 +1442,5 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 }
+
+
