@@ -1,9 +1,8 @@
-import 'package:flutter/material.dart';import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../core/models.dart';
 import '../core/scope.dart';
-import '../widgets/banner.dart';
 import '../widgets/carousel.dart';
 import 'detail_screen.dart';
 import 'player_screen.dart';
@@ -86,8 +85,8 @@ class _HomePageState extends State<HomePage> {
 
         final vod = snap.data![0], ser = snap.data![1], live = snap.data![2];
 
-        final fewMovies = _fewRecent(vod, 8);
-        final fewSeries = _fewRecent(ser, 8);
+        final fewMovies = _fewRecent(vod, 12);
+        final fewSeries = _fewRecent(ser, 12);
 
         return ValueListenableBuilder(
           valueListenable: app.store.user.listenable(),
@@ -117,9 +116,10 @@ class _HomePageState extends State<HomePage> {
                 else
                   const SizedBox(height: 84),
                 if (cont.isNotEmpty)
-                  Rail(
+                  _LandscapeRail(
                     title: 'Reprendre la lecture',
                     items: [for (final e in cont) e.item],
+                    accent: neonGreen,
                     progress: (i) => byKey[i.key]!.progress,
                     onTap: (i) {
                       final e = byKey[i.key]!;
@@ -136,30 +136,34 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                 if (recentLive.isNotEmpty)
-                  Rail(
+                  _LandscapeRail(
                     title: 'Chaînes récentes',
                     items: recentLive,
+                    accent: neonGreen,
                     onTap: (i) => openItem(context, i, channels: recentLive),
                   ),
                 if (!app.api.hasVod && live.isNotEmpty)
-                  Rail(
+                  _LandscapeRail(
                     title: 'Chaînes en direct',
                     items: live.take(12).toList(),
+                    accent: neonGreen,
                     onTap: (i) => openItem(context, i, channels: live),
                   ),
                 if (fewMovies.isNotEmpty)
-                  Rail(
+                  _LandscapeRail(
                     title: 'Quelques films',
                     items: fewMovies,
+                    accent: neonGreen,
                     onTap: (i) => openItem(context, i),
                   ),
                 if (fewSeries.isNotEmpty)
-                  Rail(
+                  _LandscapeRail(
                     title: 'Quelques séries',
                     items: fewSeries,
+                    accent: neonGreen,
                     onTap: (i) => openItem(context, i),
                   ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 36),
               ],
             );
           },
@@ -167,6 +171,15 @@ class _HomePageState extends State<HomePage> {
       },
     );
   }
+}
+
+String _itemBackdrop(Item item) {
+  final bg = item.raw['backdrop_path'];
+  if (bg is List && bg.isNotEmpty && bg.first.toString().isNotEmpty) {
+    return bg.first.toString();
+  }
+  if (bg is String && bg.isNotEmpty) return bg;
+  return item.image;
 }
 
 class _FullscreenShowcase extends StatelessWidget {
@@ -183,15 +196,6 @@ class _FullscreenShowcase extends StatelessWidget {
     required this.onFocusItem,
     required this.onTapItem,
   });
-
-  String _backdropOf(Item item) {
-    final bg = item.raw['backdrop_path'];
-    if (bg is List && bg.isNotEmpty && bg.first.toString().isNotEmpty) {
-      return bg.first.toString();
-    }
-    if (bg is String && bg.isNotEmpty) return bg;
-    return item.image;
-  }
 
   String _plotOf(Item item) {
     final p = item.raw['plot'] ?? item.raw['description'] ?? '';
@@ -211,11 +215,17 @@ class _FullscreenShowcase extends StatelessWidget {
   Widget build(BuildContext context) {
     final h = MediaQuery.of(context).size.height;
     final w = MediaQuery.of(context).size.width;
-    final stageHeight = (h * 0.86).clamp(420.0, 700.0);
-    final bgUrl = _backdropOf(active);
+    // Vitrine plus haute pour bien laisser voir l'arrière-plan
+    final stageHeight = (h * 0.94).clamp(460.0, 820.0);
+    final bgUrl = _itemBackdrop(active);
     final plot = _plotOf(active);
     final year = _yearOf(active);
     final kindLabel = active.kind == Kind.series ? 'Série' : 'Film';
+
+    // Calcul exact pour afficher 4 vignettes côte à côte dans la bannière
+    final sidePad = w >= 720 ? 44.0 : 20.0;
+    const gap = 16.0;
+    final cardW = ((w - (sidePad * 2) - (gap * 3)) / 4).clamp(170.0, 320.0);
 
     return SizedBox(
       height: stageHeight,
@@ -232,40 +242,43 @@ class _FullscreenShowcase extends StatelessWidget {
             errorBuilder: (_, __, ___) =>
                 Container(color: const Color(0xFF121722)),
           ),
+          // Dégradé gauche léger pour préserver la visibilité de l'image à droite et en haut
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                stops: const [0.0, 0.45, 0.85, 1.0],
+                stops: const [0.0, 0.38, 0.75, 1.0],
                 colors: [
-                  const Color(0xFF0A0D12).withOpacity(0.95),
-                  const Color(0xFF0A0D12).withOpacity(0.72),
-                  const Color(0xFF0A0D12).withOpacity(0.18),
+                  const Color(0xFF0A0D12).withOpacity(0.88),
+                  const Color(0xFF0A0D12).withOpacity(0.45),
+                  Colors.transparent,
                   Colors.transparent,
                 ],
               ),
             ),
           ),
+          // Dégradé bas descendu pour dégager la moitié haute de l'arrière-plan
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                stops: const [0.0, 0.55, 0.85, 1.0],
+                stops: const [0.0, 0.62, 0.88, 1.0],
                 colors: [
-                  Colors.black.withOpacity(0.35),
+                  Colors.black.withOpacity(0.25),
                   Colors.transparent,
-                  const Color(0xFF0A0D12).withOpacity(0.85),
+                  const Color(0xFF0A0D12).withOpacity(0.82),
                   const Color(0xFF0A0D12),
                 ],
               ),
             ),
           ),
+          // Infos descendues juste au-dessus des 4 vignettes
           Positioned(
-            left: w >= 720 ? 44 : 20,
-            bottom: 180,
-            right: w >= 720 ? w * 0.42 : 20,
+            left: sidePad,
+            bottom: 138,
+            right: w >= 720 ? w * 0.44 : 20,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -278,7 +291,7 @@ class _FullscreenShowcase extends StatelessWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: accent.withOpacity(0.20),
+                                                color: accent.withOpacity(0.20),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: accent, width: 1),
                       ),
@@ -318,60 +331,63 @@ class _FullscreenShowcase extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   active.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: w >= 720 ? 34 : 24,
+                    fontSize: w >= 720 ? 32 : 22,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     height: 1.12,
                   ),
                 ),
                 if (plot.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
                   Text(
                     plot,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white70,
-                      fontSize: 14,
-                      height: 1.35,
+                      fontSize: 13.5,
+                      height: 1.3,
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Text(
                   'Pro Max TV Originals',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
+          // 4 vignettes horizontales descendues tout en bas de la vitrine
           Positioned(
             left: 0,
             right: 0,
-            bottom: 16,
-            height: 142,
+            bottom: 10,
+            height: 116,
             child: ListView.separated(
-              padding: EdgeInsets.symmetric(horizontal: w >= 720 ? 44 : 20),
+              padding: EdgeInsets.symmetric(horizontal: sidePad),
               scrollDirection: Axis.horizontal,
               itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 16),
+              separatorBuilder: (_, __) => const SizedBox(width: gap),
               itemBuilder: (context, idx) {
                 final item = items[idx];
                 return _LandscapePosterCard(
                   item: item,
-                  imageUrl: _backdropOf(item),
+                  width: cardW,
+                  imageUrl: _itemBackdrop(item),
                   isActive: item.key == active.key,
                   accent: accent,
+                  showBadge: true,
                   onFocus: () => onFocusItem(item),
                   onTap: () => onTapItem(item),
                 );
@@ -384,19 +400,92 @@ class _FullscreenShowcase extends StatelessWidget {
   }
 }
 
+// --- RANGÉE HORIZONTALE À 4 AFFICHES (POUR QUELQUES FILMS, QUELQUES SÉRIES, ETC.) ---
+class _LandscapeRail extends StatelessWidget {
+  final String title;
+  final List<Item> items;
+  final Color accent;
+  final ValueChanged<Item> onTap;
+  final double Function(Item)? progress;
+
+  const _LandscapeRail({
+    required this.title,
+    required this.items,
+    required this.accent,
+    required this.onTap,
+    this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final sidePad = w >= 720 ? 44.0 : 20.0;
+    const gap = 16.0;
+    // Largeur calculée pour afficher exactement 4 cartes horizontales à l'écran
+    final cardW = ((w - (sidePad * 2) - (gap * 3)) / 4).clamp(170.0, 340.0);
+    final cardH = (cardW * 0.56).clamp(108.0, 185.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(sidePad, 18, sidePad, 10),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: cardH,
+          child: ListView.separated(
+            padding: EdgeInsets.symmetric(horizontal: sidePad),
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: gap),
+            itemBuilder: (_, i) {
+              final item = items[i];
+              return _LandscapePosterCard(
+                item: item,
+                width: cardW,
+                imageUrl: _itemBackdrop(item),
+                isActive: false,
+                accent: accent,
+                showBadge: false,
+                progressValue: progress != null ? progress!(item) : null,
+                onFocus: () {},
+                onTap: () => onTap(item),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _LandscapePosterCard extends StatefulWidget {
   final Item item;
+  final double width;
   final String imageUrl;
   final bool isActive;
   final Color accent;
+  final bool showBadge;
+  final double? progressValue;
   final VoidCallback onFocus;
   final VoidCallback onTap;
 
   const _LandscapePosterCard({
     required this.item,
+    required this.width,
     required this.imageUrl,
     required this.isActive,
     required this.accent,
+    this.showBadge = false,
+    this.progressValue,
     required this.onFocus,
     required this.onTap,
   });
@@ -420,7 +509,7 @@ class _LandscapePosterCardState extends State<_LandscapePosterCard> {
       },
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        width: 225,
+        width: widget.width,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
@@ -436,7 +525,7 @@ class _LandscapePosterCardState extends State<_LandscapePosterCard> {
               Image.network(
                 widget.imageUrl,
                 fit: BoxFit.cover,
-                cacheWidth: 450,
+                cacheWidth: 500,
                 errorBuilder: (_, __, ___) => Container(
                   color: const Color(0xFF1A202C),
                   alignment: Alignment.center,
@@ -455,52 +544,91 @@ class _LandscapePosterCardState extends State<_LandscapePosterCard> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    stops: const [0.45, 1.0],
+                    stops: const [0.42, 1.0],
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.85),
+                      Colors.black.withOpacity(0.88),
                     ],
                   ),
                 ),
               ),
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-
-                    color: widget.accent,
-                    borderRadius: BorderRadius.circular(6),
+              if (widget.showBadge)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: widget.accent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_rounded,
+                      size: 14,
+                      color: Colors.black,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.workspace_premium_rounded,
-                    size: 14,
-                    color: Colors.black,
+                )
+              else if (widget.item.rating5 > 0)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.star_rounded, color: widget.accent, size: 13),
+                        const SizedBox(width: 2),
+                                                  Text(
+                            widget.item.rating5.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: widget.progressValue != null ? 10 : 8,
+                  child: Text(
+                    widget.item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 8,
-                child: Text(
-                  widget.item.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
+                if (widget.progressValue != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: LinearProgressIndicator(
+                      value: widget.progressValue!.clamp(0.0, 1.0),
+                      minHeight: 4,
+                      backgroundColor: Colors.white24,
+                      valueColor: AlwaysStoppedAnimation<Color>(widget.accent),
+                    ),
                   ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
-                  
+
