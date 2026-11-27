@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+import 'package:android_intent_plus/android_intent.dart';
+
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -145,11 +148,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
      dyn.setProperty('hwdec', 'no');
 
         // Optimisation réseau & reconnexion rapide
-        dyn.setProperty('reconnect', '1');
+                dyn.setProperty('reconnect', '1');
         dyn.setProperty('reconnect-streamed', '1');
         dyn.setProperty('reconnect-delay-max', '2');
         dyn.setProperty('network-timeout', '8');
         dyn.setProperty('tls-verify', 'no');
+        dyn.setProperty('hls-bitrate', 'max'); // <-- Ajoutez cette ligne (ABR natif rapide)
+        dyn.setProperty('demuxer-max-back-bytes', '10MiB'); // <-- Ajoutez cette ligne
+
 
         if (_live) {
           dyn.setProperty('cache', 'yes');
@@ -337,6 +343,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         player.setVideoTrack(v.elementAt(i));
       }
     }
+            dyn.setProperty('reconnect', '1');
+        dyn.setProperty('reconnect-streamed', '1');
+        dyn.setProperty('reconnect-delay-max', '2');
+        dyn.setProperty('network-timeout', '8');
+        dyn.setProperty('tls-verify', 'no');
+        dyn.setProperty('hls-bitrate', 'max'); // <-- Ajoutez cette ligne (ABR natif rapide)
+        dyn.setProperty('demuxer-max-back-bytes', '10MiB'); // <-- Ajoutez cette ligne
+
     setState(() {});
   }
   void _zap(int delta) {
@@ -790,21 +804,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 14),
-                              FilledButton.icon(
-                                autofocus: true,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: _kNeon,
-                                  foregroundColor: Colors.black,
-                                ),
-                                onPressed: () {
-                                  _retries = 0;
-                                  _openCurrent();
-                                },
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Réessayer'),
+                                                            Wrap(
+                                spacing: 12,
+                                alignment: WrapAlignment.center,
+                                children: <Widget>[
+                                  FilledButton.icon(
+                                    autofocus: true,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: _kNeon,
+                                      foregroundColor: Colors.black,
+                                    ),
+                                    onPressed: () {
+                                      _retries = 0;
+                                      _openCurrent();
+                                    },
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Réessayer'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white,
+                                      side: const BorderSide(color: Colors.white54),
+                                    ),
+                                    onPressed: _openExternalPlayer,
+                                    icon: const Icon(Icons.open_in_new),
+                                    label: const Text('Lecteur externe'),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+
                         ),
                       ),
 
@@ -1052,7 +1080,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-                
+                          if (!kIsWeb)
+            _osdButton(
+              icon: Icons.open_in_new,
+              label: 'Externe',
+              onPressed: _openExternalPlayer,
+            ),
+              
               
               if (!_live)
                 _osdButton(
