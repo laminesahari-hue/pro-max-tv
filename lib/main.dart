@@ -91,7 +91,7 @@ class _ProMaxAppState extends State<ProMaxApp> {
     }
   }
 
-  @override  @override
+  @override
   Widget build(BuildContext context) {
     const neonGreen = Color(0xFF69F028);
 
@@ -141,13 +141,12 @@ class _ProMaxAppState extends State<ProMaxApp> {
         home: _showSplash
             ? Scaffold(
                 backgroundColor: const Color(0xFF050A0E),
-                body: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Image.asset(
-                      'assets/banner.png',
-                      width: 520,
-                      fit: BoxFit.contain,
+                body: SizedBox.expand(
+                  child: Image.asset(
+                    'assets/banner.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: CircularProgressIndicator(color: neonGreen),
                     ),
                   ),
                 ),
@@ -159,4 +158,3 @@ class _ProMaxAppState extends State<ProMaxApp> {
     );
   }
 }
-
