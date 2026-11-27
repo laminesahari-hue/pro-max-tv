@@ -343,7 +343,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         player.setVideoTrack(v.elementAt(i));
       }
     }
-                }
+                
     setState(() {});
   }
 
