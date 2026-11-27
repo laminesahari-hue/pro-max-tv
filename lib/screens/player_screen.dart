@@ -67,7 +67,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   static final _fits = List<BoxFit>.of(<BoxFit>[BoxFit.contain, BoxFit.cover, BoxFit.fill]);
   static const _panelW = 290.0;
 
-  late final AppScope app;
+  late AppScope app;
+bool _inited = false;
   late final Player player;
   late final VideoController controller;
   final _subs = <StreamSubscription>[];
@@ -110,11 +111,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return l;
   }
 
-  @override
-  void initState() {
-    super.initState();
+  
+    @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_inited) return;
+    _inited = true;
     app = AppScope.of(context);
     final st = app.store;
+
+    
+    
     _allChannels = _live ? List<Item>.of(widget.channels!) : <Item>[];
     _idx = widget.index;
     _fit = st.get<int>('fit', 0);
