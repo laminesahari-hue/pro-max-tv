@@ -25,7 +25,8 @@ jobs:
           mkdir -p assets android/app/src/main/res/drawable
           
           # Cherche banner n'importe où dans le projet
-          BANNER_SRC=$(find . -maxdepth 3 -iname "*banner*" -type f | head -n 1)
+          BANNER_SRC=$(find . -maxdepth 3 -type f \( -iname "*banner*.png" -o -iname "*banner*.jpg" -o -iname "*banner*.jpeg" -o -iname "*banner*.webp" -o -iname "*banner*.svg" \) | head -n 1)
+
           if [ -n "$BANNER_SRC" ]; then
             convert "$BANNER_SRC" -resize 640x360! PNG32:assets/banner.png
           else
@@ -34,7 +35,8 @@ jobs:
           convert assets/banner.png -resize 320x180! PNG32:android/app/src/main/res/drawable/banner.png
           
           # Cherche icon n'importe où dans le projet
-          ICON_SRC=$(find . -maxdepth 3 -iname "*icon*" -type f | head -n 1)
+                  ICON_SRC=$(find . -maxdepth 3 -type f \( -iname "*icon*.png" -o -iname "*icon*.jpg" -o -iname "*icon*.jpeg" -o -iname "*icon*.webp" -o -iname "*icon*.svg" \) | head -n 1)
+
           if [ -n "$ICON_SRC" ]; then
             convert "$ICON_SRC" -resize 512x512! PNG32:assets/icon.png
           else
