@@ -91,7 +91,7 @@ class _ProMaxAppState extends State<ProMaxApp> {
     }
   }
 
-  @override
+  @override  @override
   Widget build(BuildContext context) {
     const neonGreen = Color(0xFF69F028);
 
@@ -121,6 +121,23 @@ class _ProMaxAppState extends State<ProMaxApp> {
           focusColor: neonGreen.withOpacity(0.28),
           hoverColor: neonGreen.withOpacity(0.14),
         ),
+        builder: (context, child) {
+          if (_profile == null || _api == null || _repo == null || _epg == null) {
+            return child!;
+          }
+          return AppScope(
+            key: ValueKey(_profile!.id),
+            api: _api!,
+            repo: _repo!,
+            epg: _epg!,
+            store: widget.store,
+            profile: _profile!,
+            onActivate: _activate,
+            onAdd: _add,
+            onRemove: _remove,
+            child: child!,
+          );
+        },
         home: _showSplash
             ? Scaffold(
                 backgroundColor: const Color(0xFF050A0E),
@@ -137,19 +154,9 @@ class _ProMaxAppState extends State<ProMaxApp> {
               )
             : (_profile == null || _api == null || _repo == null || _epg == null)
                 ? ProfileFormScreen(first: true, onSave: _add)
-                : AppScope(
-                    key: ValueKey(_profile!.id),
-                    api: _api!,
-                    repo: _repo!,
-                    epg: _epg!,
-                    store: widget.store,
-                    profile: _profile!,
-                    onActivate: _activate,
-                    onAdd: _add,
-                    onRemove: _remove,
-                    child: const Shell(),
-                  ),
+                : const Shell(),
       ),
     );
   }
 }
+
