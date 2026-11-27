@@ -884,7 +884,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // --- BANNIÈRE INFO CHAÎNE + EPG ---
   Widget _buildLiveHeader() {
     final nowProg = _progs.isNotEmpty ? _progs.first : null;
-    final nextProg = _progs.length > 1 ? _progs : null;
+        final nextProg = _progs.length > 1 ? _progs.elementAt(1) : null;
+
     double progress = 0.0;
     if (nowProg != null) {
       final total = nowProg.end.difference(nowProg.start).inSeconds;
