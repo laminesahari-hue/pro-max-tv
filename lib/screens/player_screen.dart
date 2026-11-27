@@ -343,16 +343,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
         player.setVideoTrack(v.elementAt(i));
       }
     }
-            dyn.setProperty('reconnect', '1');
-        dyn.setProperty('reconnect-streamed', '1');
-        dyn.setProperty('reconnect-delay-max', '2');
-        dyn.setProperty('network-timeout', '8');
-        dyn.setProperty('tls-verify', 'no');
-        dyn.setProperty('hls-bitrate', 'max'); // <-- Ajoutez cette ligne (ABR natif rapide)
-        dyn.setProperty('demuxer-max-back-bytes', '10MiB'); // <-- Ajoutez cette ligne
-
+                }
     setState(() {});
   }
+
+  Future<void> _openExternalPlayer() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+
+    final currentUrl = player.state.playlist.medias.isNotEmpty
+        ? player.state.playlist.medias.first.uri
+        : (_live
+            ? await app.api.liveStream(_item, ext: app.store.get<String>('live_ext', 'm3u8'))
+            : widget.url);
+
+    if (currentUrl == null || currentUrl.isEmpty) return;
+
+    await player.pause();
+    final intent = AndroidIntent(
+      action: 'action_view',
+      data: currentUrl,
+      type: 'video/*',
+    );
+    await intent.launch();
+  }
+
+  
   void _zap(int delta) {
     if (!_live || _allChannels.isEmpty) return;
     _prevIdx = _idx;
@@ -831,11 +846,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                     label: const Text('Lecteur externe'),
                                   ),
                                 ],
+                                                              
                               ),
-
+                            ],
+                          ),
                         ),
                       ),
-
+                                            
                     // Saisie numérique de chaîne
                     if (_digits.isNotEmpty)
                       Positioned(
