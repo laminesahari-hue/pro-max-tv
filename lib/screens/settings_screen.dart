@@ -117,6 +117,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _link(Icons.dns, 'Sources & playlists',
             'Source active : ${app.profile.name}', const SourcesScreen(),
             autofocus: true),
+        _link(Icons.settings_remote, 'Télécommande',
+            'Configurer les touches et appuis longs', const RemoteSettingsScreen()),
 
         
         _link(Icons.event_note, 'Sources EPG', 'Guides des programmes (XMLTV)',
