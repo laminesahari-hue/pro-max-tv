@@ -19,21 +19,35 @@ class _HomePageState extends State<HomePage> {
   late Future<List<List<Item>>> _f;
   Item? _spotlight;
   Timer? _focusDebounce;
+  Timer? _autoTimer;
+  List<Item> _lastFeatured = [];
 
   @override
   void initState() {
     super.initState();
     app = AppScope.of(context);
     _f = _load();
+    _startAutoRotate();
+  }
+
+  void _startAutoRotate() {
+    _autoTimer?.cancel();
+    _autoTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || _lastFeatured.length < 2) return;
+      final idx = _spotlight == null
+          ? 0
+          : _lastFeatured.indexWhere((x) => x.key == _spotlight!.key);
+      final nextIdx = (idx + 1) % _lastFeatured.length;
+      setState(() => _spotlight = _lastFeatured[nextIdx]);
+    });
   }
 
   @override
   void dispose() {
     _focusDebounce?.cancel();
+    _autoTimer?.cancel();
     super.dispose();
-  }
-
-  Future<List<List<Item>>> _load({bool refresh = false}) async {
+  }  Future<List<List<Item>>> _load({bool refresh = false}) async {
     final st = app.store;
     final vod = st.get('show_vod', true)
         ? await app.repo.items(Kind.vod, refresh: refresh)
@@ -49,7 +63,7 @@ class _HomePageState extends State<HomePage> {
 
   List<Item> _fewRecent(List<Item> l, int count) =>
       ([...l]..sort((a, b) => b.added.compareTo(a.added))).take(count).toList();
-
+  
   List<Item> _heroItems(List<Item> vod, List<Item> ser) {
     final topVod = _fewRecent(vod.where((i) => i.image.isNotEmpty).toList(), 5);
     final topSer = _fewRecent(ser.where((i) => i.image.isNotEmpty).toList(), 5);
@@ -60,9 +74,13 @@ class _HomePageState extends State<HomePage> {
     if (_spotlight?.key == item.key) return;
     _focusDebounce?.cancel();
     _focusDebounce = Timer(const Duration(milliseconds: 120), () {
-      if (mounted) setState(() => _spotlight = item);
+      if (mounted) {
+        setState(() => _spotlight = item);
+        _startAutoRotate();
+      }
     });
   }
+  
 
   @override
   Widget build(BuildContext context) {
@@ -96,6 +114,9 @@ class _HomePageState extends State<HomePage> {
             final byKey = {for (final e in cont) e.item.key: e};
             final recentLive = st.recentLive().take(8).toList();
             final featured = _heroItems(vod, ser);
+            _lastFeatured = featured;
+            
+            
             final activeItem = (_spotlight != null &&
                     featured.any((x) => x.key == _spotlight!.key))
                 ? _spotlight!
