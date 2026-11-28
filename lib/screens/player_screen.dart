@@ -84,7 +84,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final _focus = FocusNode();
   final _playFocus = FocusNode();
   Timer? _hide, _save, _info, _abr, _digitTimer, _zapDebounce;
-
+  Timer? _longTimer;
+  LogicalKeyboardKey? _downKey;
+  bool _longHandled = false;
+  
   late List<Item> _allChannels;
   List<Cat> _cats = <Cat>[];
   String _selectedCat = 'all';
@@ -518,111 +521,155 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls();
   }
 
-  bool _onRawKey(KeyEvent event) {
-    if (!mounted) return false;
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
-    final key = event.logicalKey;
-
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.browserBack) {
-      if (_panel || _chanList) {
-        setState(() {
-          _panel = false;
-          _chanList = false;
-        });
-        _focus.requestFocus();
-        return true;
-      }
-      if (_show) {
-        _toggleControls(false);
-        return true;
-      }
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-      return true;
+    void _runRemoteAction(String action) {
+    switch (action) {
+      case 'channel_list':
+        if (_live) setState(() => _chanList = true);
+        break;
+      case 'channel_up':
+        if (_live) _zap(1);
+        break;
+      case 'channel_down':
+        if (_live) _zap(-1);
+        break;
+      case 'seek_back':
+        if (!_live) {
+          _seekBy(-_step);
+          _toggleControls(true);
+        } else if (_prevIdx != null) {
+          _jumpToIndex(_prevIdx!);
+        }
+        break;
+      case 'seek_forward':
+        if (!_live) {
+          _seekBy(_step);
+          _toggleControls(true);
+        }
+        break;
+      case 'toggle_controls':
+        _toggleControls(true);
+        break;
+      case 'epg_guide':
+        _showBanner();
+        break;
+      case 'toggle_fav':
+        app.store.toggleFavorite(_item);
+        _showBanner();
+        break;
     }
+  }
 
-    if (_chanList) {
-      if (key == LogicalKeyboardKey.arrowLeft) {
-        _shiftCategory(-1);
-        return true;
-      }
-      if (key == LogicalKeyboardKey.arrowRight) {
-        _shiftCategory(1);
-        return true;
-      }
-      return false;
-    }
-
-    if (_panel) return false;
-
-    if (_show) {
-      _bumpControls();
-      return false;
-    }
-
-    final dir = app.store.get<bool>('remote_invert_zap', false) ? -1 : 1;
-
+  String? _keyPrefix(LogicalKeyboardKey key) {
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.gameButtonA) {
-      if (_live && app.store.get<String>('remote_ok_action', 'list') == 'list') {
-        setState(() => _chanList = true);
-      } else {
-        _toggleControls(true);
-      }
-      return true;
+      return 'rc_ok';
     }
+    if (key == LogicalKeyboardKey.arrowLeft) return 'rc_left';
+    if (key == LogicalKeyboardKey.arrowRight) return 'rc_right';
+    if (key == LogicalKeyboardKey.arrowUp) return 'rc_up';
+    if (key == LogicalKeyboardKey.arrowDown) return 'rc_down';
+    return null;
+  }
 
-    if (key == LogicalKeyboardKey.arrowUp ||
-        key == LogicalKeyboardKey.channelUp) {
-      if (_live) {
-        _zap(key == LogicalKeyboardKey.channelUp ? 1 : dir);
-      } else {
-        _toggleControls(true);
-      }
-      return true;
-    }
+  bool _onRawKey(KeyEvent event) {
+    if (!mounted) return false;
+    final key = event.logicalKey;
 
-    if (key == LogicalKeyboardKey.arrowDown ||
-        key == LogicalKeyboardKey.channelDown) {
-      if (_live) {
-        _zap(key == LogicalKeyboardKey.channelDown ? -1 : -dir);
-      } else {
-        _toggleControls(true);
-      }
-      return true;
-    }
-
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      if (_live) {
-        if (app.store.get<bool>('remote_left_prev', true) && _prevIdx != null) {
-          _jumpToIndex(_prevIdx!);
-        } else {
-          _toggleControls(true);
+    if (event is KeyDownEvent) {
+      if (key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.browserBack) {
+        if (_panel || _chanList) {
+          setState(() {
+            _panel = false;
+            _chanList = false;
+          });
+          _focus.requestFocus();
+          return true;
         }
-      } else {
-        _seekBy(-_step);
-        _toggleControls(true);
+        if (_show) {
+          _toggleControls(false);
+          return true;
+        }
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        return true;
       }
-      return true;
-    }
 
-    if (key == LogicalKeyboardKey.arrowRight) {
-      if (_live) {
-        _toggleControls(true);
-      } else {
-        _seekBy(_step);
-        _toggleControls(true);
+      if (_chanList) {
+        if (key == LogicalKeyboardKey.arrowLeft) {
+          _shiftCategory(-1);
+          return true;
+        }
+        if (key == LogicalKeyboardKey.arrowRight) {
+          _shiftCategory(1);
+          return true;
+        }
+        return false;
       }
-      return true;
+
+      if (_panel) return false;
+
+      if (_show) {
+        _bumpControls();
+        return false;
+      }
+
+      if (key == LogicalKeyboardKey.channelUp && _live) {
+        _zap(1);
+        return true;
+      }
+      if (key == LogicalKeyboardKey.channelDown && _live) {
+        _zap(-1);
+        return true;
+      }
+
+      final prefix = _keyPrefix(key);
+      if (prefix != null) {
+        _downKey = key;
+        _longHandled = false;
+        _longTimer?.cancel();
+        _longTimer = Timer(const Duration(milliseconds: 500), () {
+          if (!mounted || _downKey != key) return;
+          _longHandled = true;
+          final longAct = app.store.get<String>('${prefix}_long', 'none');
+          if (longAct != 'none') _runRemoteAction(longAct);
+        });
+        return true;
+      }
+    } else if (event is KeyUpEvent) {
+      final prefix = _keyPrefix(key);
+      if (prefix != null && _downKey == key) {
+        _longTimer?.cancel();
+        _downKey = null;
+        if (!_longHandled) {
+          final defAct = prefix == 'rc_ok'
+              ? 'toggle_controls'
+              : prefix == 'rc_left'
+                  ? 'seek_back'
+                  : prefix == 'rc_right'
+                      ? 'seek_forward'
+                      : prefix == 'rc_up'
+                          ? 'channel_up'
+                          : 'channel_down';
+          final act = app.store.get<String>(prefix, defAct);
+          if (act != 'none') _runRemoteAction(act);
+        }
+        _longHandled = false;
+        return true;
+      }
     }
 
     return false;
   }
+   
+    
+
+    
+  
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -690,6 +737,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _abr?.cancel();
     _digitTimer?.cancel();
     _zapDebounce?.cancel();
+    _longTimer?.cancel();
+    
     _focus.dispose();
     _playFocus.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
