@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../core/scope.dart';
 import '../core/store.dart';
+import 'remote_settings_screen.dart';
 import 'sources_screen.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -116,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _link(Icons.dns, 'Sources & playlists',
             'Source active : ${app.profile.name}', const SourcesScreen(),
             autofocus: true),
-import 'remote_settings_screen.dart';
+
         
         _link(Icons.event_note, 'Sources EPG', 'Guides des programmes (XMLTV)',
             const EpgSourcesScreen()),
