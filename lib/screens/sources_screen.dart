@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/profile.dart';
 import '../core/scope.dart';
 import '../widgets/tv_field.dart';
+import '../widgets/tv_settings_items.dart';
 import 'login_screen.dart';
 
 class SourcesScreen extends StatefulWidget {
@@ -22,6 +23,37 @@ class _SourcesScreenState extends State<SourcesScreen> {
 
   void _toRoot() => Navigator.of(context).popUntil((r) => r.isFirst);
 
+  Future<void> _onSourceTap(Profile p) async {
+    final isCurrent = p.id == app.profile.id;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(p.name),
+        children: [
+          if (!isCurrent)
+            TvNavTile(
+              autofocus: true,
+              icon: Icons.check_circle_outline,
+              title: 'Activer cette source',
+              onTap: () => Navigator.pop(ctx, 'activate'),
+            ),
+          TvNavTile(
+            autofocus: isCurrent,
+            icon: Icons.delete_outline,
+            title: 'Supprimer cette source',
+            onTap: () => Navigator.pop(ctx, 'delete'),
+          ),
+        ],
+      ),
+    );
+    if (action == 'activate') {
+      app.onActivate(p);
+      _toRoot();
+    } else if (action == 'delete') {
+      await _delete(p);
+    }
+  }
+
   Future<void> _delete(Profile p) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -29,8 +61,13 @@ class _SourcesScreenState extends State<SourcesScreen> {
         title: const Text('Supprimer cette source ?'),
         content: Text('${p.name} et ses favoris seront supprimés.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Supprimer')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Supprimer')),
         ],
       ),
     );
@@ -51,52 +88,49 @@ class _SourcesScreenState extends State<SourcesScreen> {
     final hasFree = list.any((p) => p.id == 'free');
     return Scaffold(
       appBar: AppBar(title: const Text('Sources & playlists')),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('Ajouter'),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ProfileFormScreen(onSave: (p) async {
-              await app.onAdd(p);
-              if (mounted) _toRoot();
-            }),
-          ),
-        ),
-      ),
-      body: ListView(children: [
-        for (final p in list)
-          ListTile(
-            leading: Icon(p.id == app.profile.id
-                ? Icons.radio_button_checked
-                : Icons.radio_button_off),
-            title: Text(p.name),
-            subtitle: Text(p.typeLabel),
-            onTap: () {
-              if (p.id != app.profile.id) {
-                app.onActivate(p);
-                _toRoot();
-              }
-            },
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Supprimer',
-              onPressed: () => _delete(p),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        children: [
+          for (var i = 0; i < list.length; i++)
+            TvNavTile(
+              autofocus: i == 0,
+              icon: list[i].id == app.profile.id
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off,
+              title: list[i].name,
+              subtitle: list[i].id == app.profile.id
+                  ? '${list[i].typeLabel} • Active (OK pour options)'
+                  : list[i].typeLabel,
+              onTap: () => _onSourceTap(list[i]),
+            ),
+          TvNavTile(
+            autofocus: list.isEmpty,
+            icon: Icons.add_circle_outline,
+            title: 'Ajouter une source',
+            subtitle: 'Xtream Codes, M3U ou portail MAG',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProfileFormScreen(onSave: (p) async {
+                  await app.onAdd(p);
+                  if (mounted) _toRoot();
+                }),
+              ),
             ),
           ),
-        if (!hasFree)
-          ListTile(
-            leading: const Icon(Icons.live_tv),
-            title: const Text('Ajouter les chaînes gratuites'),
-            subtitle: const Text('France 24, Al Jazeera…'),
-            onTap: () async {
-              await app.onAdd(const Profile(
-                  id: 'free', name: 'Chaînes gratuites', type: 'free'));
-              if (mounted) _toRoot();
-            },
-          ),
-        const SizedBox(height: 80),
-      ]),
+          if (!hasFree)
+            TvNavTile(
+              icon: Icons.live_tv,
+              title: 'Ajouter les chaînes gratuites',
+              subtitle: 'France 24, Al Jazeera…',
+              onTap: () async {
+                await app.onAdd(const Profile(
+                    id: 'free', name: 'Chaînes gratuites', type: 'free'));
+                if (mounted) _toRoot();
+              },
+            ),
+        ],
+      ),
     );
   }
 }
@@ -143,49 +177,54 @@ class _EpgSourcesScreenState extends State<EpgSourcesScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Sources EPG')),
-        body: ListView(padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-          SwitchListTile(
-            title: const Text("EPG du serveur"),
-            subtitle: const Text("Utiliser le guide fourni par l'abonnement (Xtream)"),
-            value: app.store.get<bool>('epg_server', true),
-            onChanged: (v) async {
-              await app.store.set('epg_server', v);
-              if (mounted) setState(() {});
-            },
-          ),
-          TvField(
-            label: 'Ajouter une source EPG (XMLTV)',
-            hint: 'https://…/guide.xml ou .xml.gz',
-            value: '',
-            onChanged: _add,
-          ),
-          if (!_urls.contains(suggestion))
-            ListTile(
-              leading: const Icon(Icons.lightbulb_outline),
-              title: const Text('Suggestion : guide TV France (gratuit)'),
-              subtitle: const Text('xmltvfr.fr — fichier volumineux, à tester'),
-              onTap: () => _add(suggestion),
+        body: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          children: [
+            TvSwitchTile(
+              title: 'EPG du serveur',
+              subtitle:
+                  "Utiliser le guide fourni par l'abonnement (Xtream)",
+              value: app.store.get<bool>('epg_server', true),
+              onChanged: (v) async {
+                await app.store.set('epg_server', v);
+                if (mounted) setState(() {});
+              },
             ),
-          for (final u in _urls)
-            ListTile(
-              leading: const Icon(Icons.rss_feed),
-              title: Text(u, maxLines: 2, overflow: TextOverflow.ellipsis),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => _remove(u),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: TvField(
+                label: 'Ajouter une source EPG (XMLTV)',
+                hint: 'https://…/guide.xml ou .xml.gz',
+                value: '',
+                onChanged: _add,
               ),
             ),
-          ListTile(
-            leading: const Icon(Icons.refresh),
-            title: const Text('Mettre à jour maintenant'),
-            onTap: () async {
-              _snack('Téléchargement du guide…');
-              final n = await app.epg.refreshXml();
-              _snack(n == 0
-                  ? 'Aucun programme récupéré'
-                  : '$n chaînes avec programme');
-            },
-          ),
-        ]),
+            if (!_urls.contains(suggestion))
+              TvNavTile(
+                icon: Icons.lightbulb_outline,
+                title: 'Suggestion : guide TV France (gratuit)',
+                subtitle: 'xmltvfr.fr — fichier volumineux, à tester',
+                onTap: () => _add(suggestion),
+              ),
+            for (final u in _urls)
+              TvNavTile(
+                icon: Icons.rss_feed,
+                title: u,
+                subtitle: 'Appuyez sur OK pour supprimer',
+                onTap: () => _remove(u),
+              ),
+            TvNavTile(
+              icon: Icons.refresh,
+              title: 'Mettre à jour maintenant',
+              onTap: () async {
+                _snack('Téléchargement du guide…');
+                final n = await app.epg.refreshXml();
+                _snack(n == 0
+                    ? 'Aucun programme récupéré'
+                    : '$n chaînes avec programme');
+              },
+            ),
+          ],
+        ),
       );
 }
