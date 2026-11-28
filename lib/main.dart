@@ -10,6 +10,7 @@ import 'data/epg_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
 import 'services/source.dart';
+import 'splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,12 +42,13 @@ class _ProMaxAppState extends State<ProMaxApp> {
     final active = widget.store.active;
     if (active != null) _bind(active);
 
-    Timer(const Duration(seconds: 3), () {
+    Timer(const Duration(seconds: 6), () {
       if (mounted) {
         setState(() => _showSplash = false);
       }
     });
   }
+
 
   void _bind(Profile p) {
     final api = buildSource(p);
@@ -138,22 +140,19 @@ class _ProMaxAppState extends State<ProMaxApp> {
             child: child!,
           );
         },
-        home: _showSplash
-            ? Scaffold(
-                backgroundColor: const Color(0xFF050A0E),
-                body: SizedBox.expand(
-                  child: Image.asset(
-                    'assets/banner.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: CircularProgressIndicator(color: neonGreen),
-                    ),
-                  ),
-                ),
+                home: _showSplash
+            ? SplashScreen(
+                nextScreen: (_profile == null ||
+                        _api == null ||
+                        _repo == null ||
+                        _epg == null)
+                    ? ProfileFormScreen(first: true, onSave: _add)
+                    : const Shell(),
               )
             : (_profile == null || _api == null || _repo == null || _epg == null)
                 ? ProfileFormScreen(first: true, onSave: _add)
                 : const Shell(),
+
       ),
     );
   }
