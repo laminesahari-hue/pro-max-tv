@@ -552,10 +552,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       case 'epg_guide':
         _showBanner();
         break;
-         case 'toggle_fav':
-     app.store.setFavorite(_item, !app.store.isFavorite(_item));
-     _showBanner();
-     break;
+               case 'toggle_fav':
+        setState(() => _panel = true);
+        break;
 
     }
   }
