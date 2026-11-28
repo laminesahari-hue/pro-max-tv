@@ -1,3 +1,4 @@
+import 'remote_settings_screen.dart';
 import '../widgets/tv_settings_items.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -115,7 +116,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _link(Icons.dns, 'Sources & playlists',
             'Source active : ${app.profile.name}', const SourcesScreen(),
             autofocus: true),
-
+import 'remote_settings_screen.dart';
+        
         _link(Icons.event_note, 'Sources EPG', 'Guides des programmes (XMLTV)',
             const EpgSourcesScreen()),
         _choice<String>('update_mode', 'Mise à jour des listes', const {
