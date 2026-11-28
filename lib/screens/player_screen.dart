@@ -100,7 +100,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _prevIdx;
   int _gen = 0;
   bool _show = false, _showInfo = false, _buffering = true;
-  bool _panel = false, _chanList = false, _started = false;
+    int _overlayStep = 0; // 0 = rien, 1 = chaînes, 2 = dossiers + chaînes, 3 = + réglages
+  bool get _chanList => _overlayStep >= 1;
+  bool get _showFolders => _overlayStep >= 2;
+  bool get _panel => _overlayStep >= 3;
+  set _chanList(bool v) => _overlayStep = v ? (_overlayStep == 0 ? 1 : _overlayStep) : 0;
+  set _panel(bool v) => _overlayStep = v ? 3 : (_overlayStep == 3 ? 2 : _overlayStep);
+  bool _started = false;
+
   String? _error;
   List<Programme> _progs = <Programme>[];
   int _retries = 0;
@@ -532,14 +539,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       case 'channel_down':
         if (_live) _zap(-1);
         break;
-      case 'seek_back':
-        if (!_live) {
+            case 'seek_back':
+        if (_live) {
+          setState(() => _overlayStep = 1);
+        } else {
           _seekBy(-_step);
           _toggleControls(true);
-        } else if (_prevIdx != null) {
-          _jumpToIndex(_prevIdx!);
         }
         break;
+
       case 'seek_forward':
         if (!_live) {
           _seekBy(_step);
@@ -599,17 +607,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return true;
       }
 
-      if (_chanList) {
+            if (_overlayStep > 0) {
         if (key == LogicalKeyboardKey.arrowLeft) {
-          _shiftCategory(-1);
-          return true;
+          if (_live && _overlayStep < 3) {
+            setState(() => _overlayStep++);
+            return true;
+          }
+          return false;
         }
         if (key == LogicalKeyboardKey.arrowRight) {
-          _shiftCategory(1);
-          return true;
+          if (_overlayStep > 0) {
+            setState(() => _overlayStep--);
+            if (_overlayStep == 0) _focus.requestFocus();
+            return true;
+          }
+          return false;
         }
         return false;
       }
+
 
       if (_panel) return false;
 
@@ -903,15 +919,67 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: _buildBottomControls(),
                   ),
 
-                // Tiroir latéral gauche : Liste compacte (Numéro + Logo + Nom + EPG)
-                if (_live && _chanList)
+                                // Étape 2 : Colonne Dossiers tout à gauche
+                if (_live && _showFolders)
                   Positioned(
                     left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 220,
+                    child: Container(
+                      color: const Color(0xF50B0F19),
+                      child: SafeArea(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                              child: Text('DOSSIERS',
+                                  style: TextStyle(
+                                      color: _kNeon,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.2)),
+                            ),
+                            for (final c in _cats)
+                              ListTile(
+                                dense: true,
+                                selected: c.id == _selectedCat,
+                                selectedTileColor: _kNeon.withOpacity(0.18),
+                                title: Text(
+                                  c.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: c.id == _selectedCat
+                                        ? _kNeon
+                                        : Colors.white,
+                                    fontWeight: c.id == _selectedCat
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                                onTap: () => setState(() {
+                                  _selectedCat = c.id;
+                                  _overlayStep = 1;
+                                }),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Étape 1 : Colonne Chaînes + EPG (se décale à 220px si Dossiers ouvert)
+                if (_live && _chanList)
+                  Positioned(
+                    left: _showFolders ? 220 : 0,
                     top: 0,
                     bottom: 0,
                     width: 390,
                     child: _buildChannelDrawer(),
                   ),
+
 
                 // Panneau latéral droit : Audio, Sous-titres, Qualité & Format
                 if (_panel)
